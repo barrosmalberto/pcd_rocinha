@@ -26,7 +26,7 @@ with st.sidebar:
     st.info("💡 **Dica:** Use o botão direito do mouse para inclinar a maquete.")
 
 st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
-st.caption("Correlação entre topografia e vulnerabilidade espcial (pessoas com deficiência).")
+st.caption("Correlação entre topografia e vulnerabilidade espacial (pessoas com deficiência).")
 
 # ==========================================
 # 2. MOTOR DE DADOS (API E ETL)
