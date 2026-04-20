@@ -18,12 +18,11 @@ with st.sidebar:
     st.markdown("### 📌 Legenda Analítica")
     st.markdown("---")
     
-    # --- SELETOR DE BASEMAP (APENAS NATIVOS) ---
+    # --- SELETOR DE BASEMAP (NATIVOS) ---
     st.markdown("### 🗺️ Estilo do Mapa")
     estilos_mapa = {
         "Claro (Padrão)": "light",
-        "Modo Escuro": "dark",
-        "Híbrido/Estradas": "road"
+        "Modo Escuro": "dark"
     }
     mapa_selecionado = st.selectbox("Escolha a base de visualização:", list(estilos_mapa.keys()))
     basemap_pdk = estilos_mapa[mapa_selecionado]
@@ -134,7 +133,6 @@ gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
 # ==========================================
 st.markdown("### Maquete Interativa")
 
-# Ajuste automático do contraste das linhas
 cor_linha = [80, 80, 80, 200] if basemap_pdk == "light" else [255, 255, 255, 120]
 
 camada_terreno = pdk.Layer(
@@ -206,7 +204,7 @@ def renderizar_graficos(df_final):
     with col2:
         df_pcd_ord = df_plot.sort_values('PCDS — Planilha1_%', ascending=False)
         fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='PCDS — Planilha1_%', title="Concentração de PCDs por Setor")
-        fig2.update_traces(marker_color='#e67e22')
+        fig2.update_traces(marker_color='#e67e22', marker_line_width=0)
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None)
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -230,12 +228,22 @@ def renderizar_graficos(df_final):
         y=resumo['PCDS — Planilha1_%'],
         mode='lines+markers+text',
         line=dict(color='#34495e', width=4, shape='spline'),
-        marker=dict(size=24, color=['#FFB300', '#FF7F00', '#D32F2F'], line=dict(width=2, color='white')),
+        marker=dict(
+            size=24,
+            color=['#FFB300', '#FF7F00', '#D32F2F'],
+            line=dict(width=2, color='white')
+        ),
         text=resumo['PCDS — Planilha1_%'].apply(lambda x: f"{x*100:.2f}%"),
         textposition="top center",
         textfont=dict(size=10, color='#2c3e50')
     ))
-    fig4.update_layout(title="Conclusão: Tendência de Concentração por Nível de Terreno", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+    fig4.update_layout(
+        title="Conclusão: Tendência de Concentração por Nível de Terreno",
+        paper_bgcolor='rgba(0,0,0,0)', 
+        plot_bgcolor='rgba(0,0,0,0)',
+        xaxis_title="Nível do Terreno",
+        yaxis_title="Média Densidade PCD (%)"
+    )
     st.plotly_chart(fig4, use_container_width=True)
 
 renderizar_graficos(gdf_filtrado)
