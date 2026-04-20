@@ -31,9 +31,9 @@ with st.sidebar:
     
     st.markdown("---")
     if "Hipsometria" in modo_analise:
-        st.markdown("🏢 **Classes de Altitude (Tercis):**<br>🟢 Baixo | 🟠 Médio | 🟣 Alto", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo | 🟠 Médio | 🟣 Alto", unsafe_allow_html=True)
     else:
-        st.markdown("🏢 **Classes de Declividade (Quantis):**<br>Degradê de 7 níveis (Verde a Roxo).", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Declividade:**<br>🟢 Suave (Verde) → 🟣 Crítico (Roxo)", unsafe_allow_html=True)
 
     st.markdown("🎨 **Indicadores PCD (Bolhas):**")
     st.markdown("🟡 Baixa | 🟠 Média | 🔴 Alta Densidade")
@@ -44,7 +44,7 @@ st.title("🏔️ Índice de Acessibilidade Vertical: Rocinha")
 st.caption("Análise multivariada de topografia, inclinação e vulnerabilidade espacial.")
 
 # ==========================================
-# 2. MOTOR DE DADOS (ETL COM DISTRIBUIÇÃO ESTATÍSTICA)
+# 2. MOTOR DE DADOS (ETL CORRIGIDO)
 # ==========================================
 
 @st.cache_data(show_spinner=False)
@@ -72,7 +72,7 @@ def carregar_dados_completos():
     gdf = gdf.rename(columns={'PCDS — Planilha1_%': 'Percentual de PCDs'})
     gdf['Percentual de PCDs'] = gdf['Percentual de PCDs'] * 100 
         
-    with st.spinner("🌍 Mapeando relevo e calculando gradientes estatísticos..."):
+    with st.spinner("🌍 Mapeando relevo e calculando gradientes..."):
         centroids = gdf.geometry.centroid
         df_pontos = pd.DataFrame({
             'lat': centroids.y, 'lon': centroids.x,
@@ -85,25 +85,19 @@ def carregar_dados_completos():
         gdf['altitude'] = alt_a
         gdf['declividade'] = abs(np.array(alt_a) - np.array(alt_b)) / 130 * 100
 
-    # --- LÓGICA DE CORES: HIPSOMETRIA (3 CLASSES) ---
-    # Usamos qcut para garantir que existam sempre 3 cores diferentes no mapa
-    gdf['rank_alt'] = pd.qcut(gdf['altitude'], 3, labels=[0, 1, 2])
-    palette_3 = {0: [46, 204, 113, 180], 1: [230, 126, 34, 180], 2: [142, 68, 173, 180]}
-    gdf['cor_altitude'] = gdf['rank_alt'].map(palette_3)
+    # --- CORREÇÃO TYPEERROR: HIPSOMETRIA ---
+    # Usamos labels inteiros e mapeamento manual via lista
+    ranks_alt = pd.qcut(gdf['altitude'], 3, labels=[0, 1, 2]).astype(int)
+    palette_3 = [[46, 204, 113, 180], [230, 126, 34, 180], [142, 68, 173, 180]]
+    gdf['cor_altitude'] = [palette_3[r] for r in ranks_alt]
 
-    # --- LÓGICA DE CORES: DECLIVIDADE (7 CLASSES) ---
-    # Usamos qcut para garantir que existam sempre 7 tons diferentes no mapa
-    gdf['rank_slope'] = pd.qcut(gdf['declividade'].rank(method='first'), 7, labels=range(7))
+    # --- CORREÇÃO TYPEERROR: DECLIVIDADE ---
+    ranks_slope = pd.qcut(gdf['declividade'].rank(method='first'), 7, labels=range(7)).astype(int)
     palette_7 = [
-        [46, 204, 113, 180],   # Verde
-        [125, 206, 160, 180],  # Verde Claro
-        [241, 196, 15, 180],   # Amarelo
-        [243, 156, 18, 180],   # Amarelo Escuro
-        [230, 126, 34, 180],   # Laranja
-        [155, 89, 182, 180],   # Roxo Claro
-        [142, 68, 173, 180]    # Roxo
+        [46, 204, 113, 180], [125, 206, 160, 180], [241, 196, 15, 180],
+        [243, 156, 18, 180], [230, 126, 34, 180], [155, 89, 182, 180], [142, 68, 173, 180]
     ]
-    gdf['cor_declividade'] = gdf['rank_slope'].apply(lambda x: palette_7[int(x)])
+    gdf['cor_declividade'] = [palette_7[r] for r in ranks_slope]
 
     # Bolhas PCD
     min_pct, max_pct = gdf['Percentual de PCDs'].min(), gdf['Percentual de PCDs'].max()
@@ -123,7 +117,7 @@ def carregar_dados_completos():
 gdf_pcd = carregar_dados_completos()
 
 # ==========================================
-# 3. FILTROS E LÓGICA DE EXIBIÇÃO
+# 3. LOGICA DE EXIBIÇÃO
 # ==========================================
 with st.sidebar:
     valor_slider = st.slider("Exibir setores com mais de (% PCD):", 
@@ -157,11 +151,11 @@ st.pydeck_chart(pdk.Deck(
     layers=[camada_terreno, camada_bolhas],
     initial_view_state=pdk.ViewState(latitude=gdf_pcd.geometry.centroid.y.mean(), longitude=gdf_pcd.geometry.centroid.x.mean(), zoom=15.2, pitch=45, bearing=5),
     map_style=basemap_pdk,
-    tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Alt:</b> {altitude}m<br><b>Inclinação:</b> {declividade:.1f}%<br><b>PCD:</b> {Percentual de PCDs:.2f}%"}
+    tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Alt:</b> {altitude}m<br><b>Decliv:</b> {declividade:.1f}%<br><b>PCD:</b> {Percentual de PCDs:.2f}%"}
 ))
 
 # ==========================================
-# 5. PAINEL ANALÍTICO (PRODUTOS INDEPENDENTES)
+# 5. PAINEL ANALÍTICO
 # ==========================================
 @st.fragment
 def renderizar_graficos(df_final):
@@ -170,7 +164,7 @@ def renderizar_graficos(df_final):
     if df_final.empty: return
 
     df_plot = pd.DataFrame(df_final.drop(columns=['geometry']))
-    df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, labels=['1. Baixo', '2. Médio', '3. Alto'])
+    df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], 3, labels=['1. Baixo', '2. Médio', '3. Alto'])
     
     col_a, col_b = st.columns(2)
     with col_a:
