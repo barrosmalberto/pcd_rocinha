@@ -58,7 +58,7 @@ with st.sidebar:
     st.info("💡 **Dica:** O Vermelho representa o alerta máximo de acessibilidade em todas as camadas.")
 
 st.title("🏔️ Índice de Acessibilidade Vertical: Rocinha")
-st.caption("Análise multivariada: Correlação entre topografia, inclinação e vulnerabilidade espacial.")
+st.caption("Exploração Multivariada: Sobreposição de Indicadores de Acessibilidade e Topografia.")
 
 # ==========================================
 # 2. MOTOR DE DADOS (ETL COM REFINO VISUAL)
