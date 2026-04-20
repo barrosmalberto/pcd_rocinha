@@ -31,20 +31,20 @@ with st.sidebar:
     
     st.markdown("---")
     if "Hipsometria" in modo_analise:
-        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo (Claro) | 🟠 Médio | 🔴 Alto", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo (Verde) | 🟠 Médio | 🔴 Alto (Crítico)", unsafe_allow_html=True)
     else:
         st.markdown("🏢 **Classes de Declividade:**<br>🟢 Plano (Claro) → 🔴 Crítico (Escuro)", unsafe_allow_html=True)
 
     st.markdown("🎨 **Indicadores PCD (Bolhas):**")
     st.markdown("🟡 Baixa | 🟠 Média | 🔴 Alta Densidade")
     st.markdown("---")
-    st.info("💡 **Dica:** O Vermelho agora representa o valor mais alto em todas as camadas.")
+    st.info("💡 **Dica:** O Vermelho representa o alerta máximo de acessibilidade em todas as camadas.")
 
 st.title("🏔️ Índice de Acessibilidade Vertical: Rocinha")
-st.caption("Análise multivariada: Hierarquia visual com Vermelho como alerta máximo.")
+st.caption("Análise multivariada: Correlação entre topografia, inclinação e vulnerabilidade espacial.")
 
 # ==========================================
-# 2. MOTOR DE DADOS (ETL COM LIMPEZA DE DADOS)
+# 2. MOTOR DE DADOS (ETL COM REFINO VISUAL)
 # ==========================================
 
 @st.cache_data(show_spinner=False)
@@ -70,10 +70,9 @@ def carregar_dados_completos():
     if gdf.crs != "EPSG:4326": gdf = gdf.to_crs(epsg=4326)
     
     gdf = gdf.rename(columns={'PCDS — Planilha1_%': 'Percentual de PCDs'})
-    # --- ARREDONDAMENTO DO PERCENTUAL ---
     gdf['Percentual de PCDs'] = (gdf['Percentual de PCDs'] * 100).round(2)
         
-    with st.spinner("🌍 Mapeando relevo e ajustando alertas visuais..."):
+    with st.spinner("🌍 Processando Hipsometria e Declividade (NBR 9050)..."):
         centroids = gdf.geometry.centroid
         df_pontos = pd.DataFrame({
             'lat': centroids.y, 'lon': centroids.x,
@@ -83,21 +82,21 @@ def carregar_dados_completos():
         alt_a = obter_elevacao_lote(df_pontos[['lat', 'lon']])
         alt_b = obter_elevacao_lote(df_pontos.rename(columns={'lat_b':'lat', 'lon_b':'lon'})[['lat', 'lon']])
         
-        # --- ARREDONDAMENTO DE ALTITUDE E DECLIVIDADE ---
         gdf['altitude'] = np.array(alt_a).round(1)
         gdf['declividade'] = (abs(np.array(alt_a) - np.array(alt_b)) / 130 * 100).round(1)
 
-    # --- NOMES TÉCNICOS PARA O TOOLTIP (EVITA COLCHETES) ---
+    # Nomes técnicos para o tooltip
     gdf['pcd_tooltip'] = gdf['Percentual de PCDs']
     gdf['alt_tooltip'] = gdf['altitude']
     gdf['dec_tooltip'] = gdf['declividade']
 
-    # --- PALETA HIPSOMETRIA (3 CLASSES) ---
+    # --- PALETA HIPSOMETRIA (3 CLASSES: VOLTANDO AO VERDE ORIGINAL) ---
     ranks_alt = pd.qcut(gdf['altitude'], 3, labels=[0, 1, 2]).astype(int)
-    palette_3 = [[200, 230, 201, 180], [255, 152, 0, 180], [211, 47, 47, 180]]
+    # Baixo (Verde Original) -> Médio (Laranja) -> Alto (Vermelho)
+    palette_3 = [[165, 214, 167, 180], [255, 152, 0, 180], [211, 47, 47, 180]]
     gdf['cor_altitude'] = [palette_3[r] for r in ranks_alt]
 
-    # --- PALETA DECLIVIDADE (7 CLASSES) ---
+    # --- PALETA DECLIVIDADE (7 CLASSES: DEGRADÊ LÓGICO) ---
     ranks_slope = pd.qcut(gdf['declividade'].rank(method='first'), 7, labels=range(7)).astype(int)
     palette_7 = [
         [232, 245, 233, 180], [165, 214, 167, 180], [255, 245, 157, 180],
@@ -122,7 +121,7 @@ def carregar_dados_completos():
 gdf_pcd = carregar_dados_completos()
 
 # ==========================================
-# 3. FILTROS E EXIBIÇÃO
+# 3. FILTROS E LÓGICA
 # ==========================================
 with st.sidebar:
     valor_slider = st.slider("Exibir setores com PCDs acima de (%):", 
@@ -134,7 +133,7 @@ gdf_filtrado = gdf_pcd[gdf_pcd['Percentual de PCDs'] >= valor_slider]
 cor_ativa = "cor_altitude" if "Hipsometria" in modo_analise else "cor_declividade"
 
 # ==========================================
-# 4. MAPA 3D (COM TOOLTIP REFINADO)
+# 4. MAPA 3D (TOOLTIP REFINADO)
 # ==========================================
 st.markdown(f"### Maquete Técnica: {modo_analise}")
 
@@ -152,7 +151,6 @@ camada_bolhas = pdk.Layer(
     stroked=True, line_width_min_pixels=1.5, pickable=True, auto_highlight=True
 )
 
-# --- CONFIGURAÇÃO DE TOOLTIP PROFISSIONAL ---
 tooltip_config = {
     "html": """
         <div style='font-family: sans-serif; font-size: 13px;'>
@@ -180,6 +178,22 @@ def renderizar_graficos(df_final):
     st.divider()
     st.subheader("📊 Evidências Analíticas")
     if df_final.empty: return
+
+    # --- NOTA METODOLÓGICA (RESTAURADA E COMPLEMENTADA) ---
+    with st.expander("ℹ️ Nota Metodológica"):
+        st.write("""
+            **1. Hipsometria (Altitude):**
+            Utilizamos o critério estatístico de **Tercis** para classificar a topografia:
+            - **Baixo:** O terço inferior das altitudes registradas (base da comunidade).
+            - **Médio:** O terço intermediário (meia-encosta).
+            - **Alto:** O terço superior (topo).
+
+            **2. Declividade (Inclinação):**
+            Calculada através da variação de altitude entre pontos centroides e vizinhos (~100m). Aplicamos a técnica de **Quantis (7 classes)** para identificar micro-variações no terreno.
+            
+            **3. Acessibilidade:**
+            Segundo a norma **NBR 9050**, inclinações superiores a **8.33%** representam barreiras críticas para a mobilidade de PCDs sem auxílio externo.
+        """)
 
     df_plot = pd.DataFrame(df_final.drop(columns=['geometry']))
     df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, labels=['1. Baixo', '2. Médio', '3. Alto'])
