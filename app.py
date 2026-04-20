@@ -11,7 +11,6 @@ import plotly.express as px
 # ==========================================
 # 1. CONFIGURAÇÃO E INTERFACE (SIDEBAR)
 # ==========================================
-# Se você já mudou no .streamlit/config.toml, o Streamlit vai respeitar o Light Theme global.
 st.set_page_config(page_title="Rocinha PCD & Hipsometria", layout="wide")
 
 with st.sidebar:
@@ -23,10 +22,10 @@ with st.sidebar:
     st.markdown("🟡 **Amarelo:** Baixa Densidade")
     st.markdown("🔴 **Vermelho:** Alta Densidade")
     st.markdown("---")
-    st.info("💡 **Dica:** Use o botão direito do mouse para girar a maquete interativa.")
+    st.info("💡 **Dica:** Use o botão direito do rato para inclinar a maquete e ver a volumetria.")
 
 st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
-st.caption("Visualização técnica refinada: Correlação entre topografia e vulnerabilidade.")
+st.caption("Visualização técnica refinada: Correlação entre topografia e vulnerabilidade social.")
 
 # ==========================================
 # 2. MOTOR DE DADOS (API E ETL)
@@ -38,7 +37,7 @@ def obter_elevacao_lote(df, lat_col="lat", lon_col="lon", chunk_size=100):
     locations = [{"latitude": row[lat_col], "longitude": row[lon_col]} for _, row in df.iterrows()]
     url = "https://api.open-elevation.com/api/v1/lookup"
     
-    progresso = st.progress(0, text="🌍 Consultando relevo (API Open-Elevation)...")
+    progresso = st.progress(0, text="🌍 A consultar relevo (API Open-Elevation)...")
     
     for i in range(0, len(locations), chunk_size):
         chunk = locations[i : i + chunk_size]
@@ -71,33 +70,28 @@ def carregar_dados_completos():
     
     min_alt, max_alt = gdf['altitude'].min(), gdf['altitude'].max()
     
-    # --- NOVA ESTÉTICA DO TERRENO: Cores Vibrantes para Light Theme ---
     def cor_altimetria_light(alt):
         frac = (alt - min_alt) / (max_alt - min_alt) if max_alt > min_alt else 0
         if frac < 0.5:
-            # Transição: Verde-Água (130, 200, 200) para Ametista (150, 120, 190)
             f_norm = frac * 2
             r = int(130 + (150 - 130) * f_norm)
             g = int(200 + (120 - 200) * f_norm)
             b = int(200 + (190 - 200) * f_norm)
         else:
-            # Transição: Ametista (150, 120, 190) para Terracota (220, 100, 110)
             f_norm = (frac - 0.5) * 2
             r = int(150 + (220 - 150) * f_norm)
             g = int(120 + (100 - 120) * f_norm)
             b = int(190 + (110 - 190) * f_norm)
-        return [r, g, b, 180] # Alpha 180 para não desbotar contra o branco
+        return [r, g, b, 180]
         
     gdf['cor_terreno'] = gdf['altitude'].apply(cor_altimetria_light)
 
-    # Cores e Posição das Bolhas
     min_pct = gdf['PCDS — Planilha1_%'].min()
     max_pct = gdf['PCDS — Planilha1_%'].max()
     gdf['posicao_bolha'] = gdf.apply(lambda r: [r.geometry.centroid.x, r.geometry.centroid.y, (r['altitude'] * 0.2) + 1.5], axis=1)
     
     def calc_cor_light(p):
         val = (p - min_pct) / (max_pct - min_pct) if max_pct > min_pct else 0
-        # Amarelo Ouro [255, 200, 0] para Vermelho Escuro [180, 0, 0]
         return [int(255 - (75 * val)), int(200 * (1 - val)), 0, 230]
     
     gdf['cor_pcd'] = gdf['PCDS — Planilha1_%'].apply(calc_cor_light)
@@ -123,7 +117,7 @@ with st.sidebar:
 gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
 
 # ==========================================
-# 4. MAPA PYDECK (VERSÃO LIGHT THEME)
+# 4. MAPA PYDECK (ÂNGULO DE 45°)
 # ==========================================
 st.markdown("### Maquete Técnica Interativa")
 
@@ -134,7 +128,7 @@ camada_terreno = pdk.Layer(
     get_elevation="altitude",
     elevation_scale=0.2, 
     get_fill_color="cor_terreno", 
-    get_line_color=[80, 80, 80, 200], # GRAFITE ESCURO: Define as fronteiras contra o fundo claro
+    get_line_color=[80, 80, 80, 200], 
     line_width_min_pixels=1.5, 
     stroked=True,
     pickable=True,
@@ -147,7 +141,7 @@ camada_bolhas = pdk.Layer(
     get_radius="raio_bolha",
     radius_scale=1.1,
     get_fill_color="cor_pcd",
-    get_line_color=[40, 40, 40, 255], # GRAFITE SÓLIDO: Para destacar a bolha do terreno colorido
+    get_line_color=[40, 40, 40, 255], 
     stroked=True,
     line_width_min_pixels=1.5,
     pickable=True,
@@ -158,18 +152,19 @@ visao_mapa = pdk.ViewState(
     latitude=gdf_pcd.geometry.centroid.y.mean(),
     longitude=gdf_pcd.geometry.centroid.x.mean(),
     zoom=15.2, 
-    pitch=45,  # AQUI ESTÁ A MAGIA: Angulação exata de 45° 📐
-    bearing=5  # Mantemos uma ligeira rotação (5°) para que a malha não fique totalmente reta
+    pitch=45, 
+    bearing=5
 )
+
 st.pydeck_chart(pdk.Deck(
     layers=[camada_terreno, camada_bolhas],
     initial_view_state=visao_mapa,
-    map_style="light", # ATUALIZADO: Fundo do mapa configurado para o estilo claro (Road/Light)
+    map_style="light",
     tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Altitude:</b> {altitude}m<br><b>PCDs:</b> {PCDS — Planilha1_%}"}
 ))
 
 # ==========================================
-# 5. PAINEL ANALÍTICO
+# 5. PAINEL ANALÍTICO (SUAVIZADO)
 # ==========================================
 @st.fragment
 def renderizar_graficos(df_final):
@@ -185,24 +180,21 @@ def renderizar_graficos(df_final):
                                         labels=['1. Baixo', '2. Médio', '3. Alto'])
     
     with st.expander("ℹ️ Nota Metodológica: O que são as Faixas de Relevo?"):
-        st.write("""
-            Utilizamos o critério estatístico de **Tercis** para classificar a topografia:
-            - **Baixo:** O terço inferior das altitudes registradas (base da comunidade).
-            - **Médio:** O terço intermediário (áreas de encosta).
-            - **Alto:** O terço superior (cumes e áreas de maior dificuldade de acesso).
-        """)
+        st.write("Classificação topográfica baseada em tercis estatísticos das altitudes da região.")
 
     col1, col2 = st.columns(2)
     with col1:
         df_alt = df_plot.sort_values('altitude', ascending=False)
         fig1 = px.line(df_alt, x='sub_bairro', y='altitude', markers=True, title="Perfil de Altitude por Setor")
         fig1.update_traces(line_color='grey', marker=dict(color='crimson'))
+        fig1.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
         df_pcd_ord = df_plot.sort_values('PCDS — Planilha1_%', ascending=False)
         fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='PCDS — Planilha1_%', title="Concentração de PCDs por Setor")
         fig2.update_traces(marker_color='darkorange')
+        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("#### Matriz de Correlação Clusterizada")
@@ -210,19 +202,38 @@ def renderizar_graficos(df_final):
         df_plot, x='altitude', y='PCDS — Planilha1_%',
         color='Faixa de Relevo', size='PCDS — Planilha1_%',
         hover_name='sub_bairro',
-        # Cores adaptadas para melhor contraste em fundo claro
         color_discrete_map={'1. Baixo': '#FFB300', '2. Médio': '#FF7F00', '3. Alto': '#D32F2F'},
         title="Dispersão: Altitude vs Densidade PCD"
     )
-    # Borda escura nas bolhas do gráfico
     fig3.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+    fig3.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig3, use_container_width=True)
 
+    # --- GRÁFICO 4: CONCLUSÃO SUAVIZADA (BARRA HORIZONTAL) ---
     resumo = df_plot.groupby('Faixa de Relevo', observed=False)['PCDS — Planilha1_%'].mean().reset_index()
-    fig4 = px.bar(resumo, x='Faixa de Relevo', y='PCDS — Planilha1_%',
+    
+    # Criamos barras horizontais mais finas e limpas
+    fig4 = px.bar(resumo, 
+                  y='Faixa de Relevo', 
+                  x='PCDS — Planilha1_%',
+                  orientation='h',
                   title="Conclusão: Média de PCDs por Nível de Terreno",
                   color='Faixa de Relevo',
-                  color_discrete_map={'1. Baixo': '#FFB300', '2. Médio': '#FF7F00', '3. Alto': '#D32F2F'})
+                  color_discrete_map={'1. Baixo': '#FFB300', '2. Médio': '#FF7F00', '3. Alto': '#D32F2F'},
+                  text_auto='.4f') # Mostra o valor exato no fim da barra
+    
+    fig4.update_layout(
+        showlegend=False,
+        yaxis_title=None,
+        xaxis_title="Média da Densidade PCD",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        bargap=0.4, # Deixa as barras mais finas e "suaves"
+        xaxis=dict(showgrid=False, zeroline=False), # Remove linhas de grade
+        yaxis=dict(showgrid=False)
+    )
+    fig4.update_traces(marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.8)
+    
     st.plotly_chart(fig4, use_container_width=True)
 
 renderizar_graficos(gdf_filtrado)
