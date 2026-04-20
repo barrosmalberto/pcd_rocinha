@@ -157,9 +157,10 @@ camada_bolhas = pdk.Layer(
 visao_mapa = pdk.ViewState(
     latitude=gdf_pcd.geometry.centroid.y.mean(),
     longitude=gdf_pcd.geometry.centroid.x.mean(),
-    zoom=14.8, pitch=40, bearing=5
+    zoom=11.2, 
+    pitch=45,  # AQUI ESTÁ A MAGIA: Angulação exata de 45° 📐
+    bearing=5  # Mantemos uma ligeira rotação (5°) para que a malha não fique totalmente reta
 )
-
 st.pydeck_chart(pdk.Deck(
     layers=[camada_terreno, camada_bolhas],
     initial_view_state=visao_mapa,
