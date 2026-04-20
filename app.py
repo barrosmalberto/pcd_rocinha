@@ -17,15 +17,15 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/814/814513.png", width=50)
     st.markdown("### 📌 Legenda Analítica")
     st.markdown("---")
-    st.markdown("🏢 **Base Territorial (Gris):**<br>Polígonos com elevação sutil indicando a topografia do setor.", unsafe_allow_html=True)
-    st.markdown("🎨 **Bolhas (Foco PCD):**<br>O tamanho e a cor indicam a concentração de PCDs.", unsafe_allow_html=True)
+    st.markdown("🏢 **Malha Territorial:**<br>Base com relevo suavizado e divisas técnicas destacadas.", unsafe_allow_html=True)
+    st.markdown("🎨 **Indicadores PCD (Bolhas):**<br>O tamanho e a cor indicam a concentração de PCDs.", unsafe_allow_html=True)
     st.markdown("🟡 **Amarelo:** Baixa Densidade")
     st.markdown("🔴 **Vermelho:** Alta Densidade")
     st.markdown("---")
-    st.info("💡 **Dica:** Segure o botão direito do mouse para girar a maquete.")
+    st.info("💡 **Dica:** Use o botão direito do mouse para girar e observar a suavidade do terreno.")
 
 st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
-st.caption("Análise técnica de correlação entre topografia e vulnerabilidade social.")
+st.caption("Visualização técnica refinada: Correlação entre topografia e vulnerabilidade.")
 
 # ==========================================
 # 2. MOTOR DE DADOS (API E ETL)
@@ -68,23 +68,24 @@ def carregar_dados_completos():
         temp_df = pd.DataFrame({'lat': centroids.y, 'lon': centroids.x})
         gdf['altitude'] = obter_elevacao_lote(temp_df)
     
-    # Cores do Terreno (Cinza Técnico)
+    # Cores do Terreno (Cinza Suave/Técnico)
     min_alt, max_alt = gdf['altitude'].min(), gdf['altitude'].max()
-    gdf['cor_terreno'] = gdf['altitude'].apply(lambda x: [int(100 - (60 * (x-min_alt)/(max_alt-min_alt))), 
-                                                         int(100 - (60 * (x-min_alt)/(max_alt-min_alt))), 
-                                                         int(100 - (60 * (x-min_alt)/(max_alt-min_alt))), 180])
+    gdf['cor_terreno'] = gdf['altitude'].apply(lambda x: [int(90 - (50 * (x-min_alt)/(max_alt-min_alt))), 
+                                                         int(90 - (50 * (x-min_alt)/(max_alt-min_alt))), 
+                                                         int(90 - (50 * (x-min_alt)/(max_alt-min_alt))), 160])
 
     # Cores e Posição das Bolhas
     min_pct = gdf['PCDS — Planilha1_%'].min()
     max_pct = gdf['PCDS — Planilha1_%'].max()
-    gdf['posicao_bolha'] = gdf.apply(lambda r: [r.geometry.centroid.x, r.geometry.centroid.y, (r['altitude'] * 0.4) + 2], axis=1)
+    # Ajuste de altura da bolha para acompanhar a suavização do terreno
+    gdf['posicao_bolha'] = gdf.apply(lambda r: [r.geometry.centroid.x, r.geometry.centroid.y, (r['altitude'] * 0.2) + 1.5], axis=1)
     
     def calc_cor(p):
         val = (p - min_pct) / (max_pct - min_pct) if max_pct > min_pct else 0
         return [255, int(255 * (1 - val)), 0, 230]
     
     gdf['cor_pcd'] = gdf['PCDS — Planilha1_%'].apply(calc_cor)
-    gdf['raio_bolha'] = gdf['PCDS — Planilha1_%'].apply(lambda x: 15 + ((x - min_pct) / (max_pct - min_pct) * 40))
+    gdf['raio_bolha'] = gdf['PCDS — Planilha1_%'].apply(lambda x: 12 + ((x - min_pct) / (max_pct - min_pct) * 38))
     
     return gdf
 
@@ -106,31 +107,31 @@ with st.sidebar:
 gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
 
 # ==========================================
-# 4. MAPA PYDECK (VERSÃO LAPIDADA)
+# 4. MAPA PYDECK (VERSÃO ULTRA-SUAVIZADA)
 # ==========================================
-st.markdown("### Maquete Analítica da Rocinha")
+st.markdown("### Maquete Técnica Interativa")
 
-# Camada de Terreno: Agora com elevação sutil e linhas de divisa
+# Camada de Terreno: Suavização máxima e linhas reforçadas
 camada_terreno = pdk.Layer(
     "GeoJsonLayer",
     gdf_pcd,
     extruded=True,
     get_elevation="altitude",
-    elevation_scale=0.4, # REDUZIDO: Para um visual mais elegante e menos 'Minecraft'
+    elevation_scale=0.2, # SUAVIZAÇÃO: Reduzido para um perfil mais plano e elegante
     get_fill_color="cor_terreno",
-    get_line_color=[200, 200, 200, 150], # LINHA FINA: Cinza claro para dividir setores
-    line_width_min_pixels=1, # Garante que a linha seja visível
+    get_line_color=[255, 255, 255, 180], # LINHA REFORÇADA: Branca e mais visível
+    line_width_min_pixels=2, # ESPESSURA: Linha de divisa mais nítida
     stroked=True,
     pickable=True,
 )
 
-# Camada de Bolhas: Mantendo o foco nos PCDs
+# Camada de Bolhas: Destaque flutuante
 camada_bolhas = pdk.Layer(
     "ScatterplotLayer",
     gdf_filtrado,
     get_position="posicao_bolha",
     get_radius="raio_bolha",
-    radius_scale=1.2,
+    radius_scale=1.1,
     get_fill_color="cor_pcd",
     get_line_color=[255, 255, 255, 255],
     stroked=True,
@@ -142,7 +143,7 @@ camada_bolhas = pdk.Layer(
 visao_mapa = pdk.ViewState(
     latitude=gdf_pcd.geometry.centroid.y.mean(),
     longitude=gdf_pcd.geometry.centroid.x.mean(),
-    zoom=14.8, pitch=45, bearing=10
+    zoom=14.8, pitch=40, bearing=5
 )
 
 st.pydeck_chart(pdk.Deck(
@@ -158,7 +159,7 @@ st.pydeck_chart(pdk.Deck(
 @st.fragment
 def renderizar_graficos(df_final):
     st.divider()
-    st.subheader("📊 Evidências e Metodologia")
+    st.subheader("📊 Evidências Analíticas")
     
     if df_final.empty:
         st.warning("Ajuste o filtro para visualizar os gráficos.")
@@ -168,13 +169,8 @@ def renderizar_graficos(df_final):
     df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, 
                                         labels=['1. Baixo (Vales)', '2. Médio (Encostas)', '3. Alto (Topos)'])
     
-    with st.expander("ℹ️ Nota Metodológica: O que são as Faixas de Relevo?"):
-        st.write("""
-            Utilizamos o critério estatístico de **Tercis** para classificar a topografia:
-            - **Baixo:** O terço inferior das altitudes registradas (base da comunidade).
-            - **Médio:** O terço intermediário (áreas de encosta).
-            - **Alto:** O terço superior (cumes e áreas de maior dificuldade de acesso).
-        """)
+    with st.expander("ℹ️ Nota Metodológica"):
+        st.write("Classificação topográfica baseada em tercis estatísticos das altitudes da região.")
 
     col1, col2 = st.columns(2)
     with col1:
