@@ -131,7 +131,7 @@ gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
 # ==========================================
 # 4. MAPA PYDECK (VERSÃO REFINADA)
 # ==========================================
-st.markdown("### Maquete Técnica Interativa")
+st.markdown("### Maquete Interativa")
 
 # Ajuste automático do contraste das linhas
 cor_linha = [80, 80, 80, 200] if basemap_pdk == "light" else [255, 255, 255, 120]
