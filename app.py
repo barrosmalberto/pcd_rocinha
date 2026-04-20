@@ -182,10 +182,15 @@ def renderizar_graficos(df_final):
 
     df_plot = pd.DataFrame(df_final.drop(columns=['geometry']))
     df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, 
-                                        labels=['1. Baixo (Vales)', '2. Médio (Encostas)', '3. Alto (Topos)'])
+                                        labels=['1. Baixo', '2. Médio', '3. Alto'])
     
-    with st.expander("ℹ️ Nota Metodológica"):
-        st.write("Classificação topográfica baseada em tercis estatísticos das altitudes da região.")
+    with st.expander("ℹ️ Nota Metodológica: O que são as Faixas de Relevo?"):
+        st.write("""
+            Utilizamos o critério estatístico de **Tercis** para classificar a topografia:
+            - **Baixo:** O terço inferior das altitudes registradas (base da comunidade).
+            - **Médio:** O terço intermediário (áreas de encosta).
+            - **Alto:** O terço superior (cumes e áreas de maior dificuldade de acesso).
+        """)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -206,7 +211,7 @@ def renderizar_graficos(df_final):
         color='Faixa de Relevo', size='PCDS — Planilha1_%',
         hover_name='sub_bairro',
         # Cores adaptadas para melhor contraste em fundo claro
-        color_discrete_map={'1. Baixo (Vales)': '#FFB300', '2. Médio (Encostas)': '#FF7F00', '3. Alto (Topos)': '#D32F2F'},
+        color_discrete_map={'1. Baixo': '#FFB300', '2. Médio': '#FF7F00', '3. Alto': '#D32F2F'},
         title="Dispersão: Altitude vs Densidade PCD"
     )
     # Borda escura nas bolhas do gráfico
@@ -217,7 +222,7 @@ def renderizar_graficos(df_final):
     fig4 = px.bar(resumo, x='Faixa de Relevo', y='PCDS — Planilha1_%',
                   title="Conclusão: Média de PCDs por Nível de Terreno",
                   color='Faixa de Relevo',
-                  color_discrete_map={'1. Baixo (Vales)': '#FFB300', '2. Médio (Encostas)': '#FF7F00', '3. Alto (Topos)': '#D32F2F'})
+                  color_discrete_map={'1. Baixo': '#FFB300', '2. Médio': '#FF7F00', '3. Alto': '#D32F2F'})
     st.plotly_chart(fig4, use_container_width=True)
 
 renderizar_graficos(gdf_filtrado)
