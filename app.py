@@ -25,7 +25,7 @@ with st.sidebar:
     st.info("💡 **Dica:** Use o botão direito do rato para inclinar a maquete e ver a volumetria.")
 
 st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
-st.caption("Visualização técnica refinada: Correlação entre topografia e vulnerabilidade social.")
+st.caption("Visualização técnica refinada: Correlação entre topografia e vulnerabilidade.")
 
 # ==========================================
 # 2. MOTOR DE DADOS (API E ETL)
@@ -37,7 +37,7 @@ def obter_elevacao_lote(df, lat_col="lat", lon_col="lon", chunk_size=100):
     locations = [{"latitude": row[lat_col], "longitude": row[lon_col]} for _, row in df.iterrows()]
     url = "https://api.open-elevation.com/api/v1/lookup"
     
-    progresso = st.progress(0, text="🌍 A consultar relevo (API Open-Elevation)...")
+    progresso = st.progress(0, text="🌍 Consultando relevo (API Open-Elevation)...")
     
     for i in range(0, len(locations), chunk_size):
         chunk = locations[i : i + chunk_size]
@@ -164,7 +164,7 @@ st.pydeck_chart(pdk.Deck(
 ))
 
 # ==========================================
-# 5. PAINEL ANALÍTICO (SUAVIZADO)
+# 5. PAINEL ANALÍTICO (SUAVIZADO COM LINHAS)
 # ==========================================
 @st.fragment
 def renderizar_graficos(df_final):
@@ -179,22 +179,22 @@ def renderizar_graficos(df_final):
     df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, 
                                         labels=['1. Baixo', '2. Médio', '3. Alto'])
     
-    with st.expander("ℹ️ Nota Metodológica: O que são as Faixas de Relevo?"):
+    with st.expander("ℹ️ Nota Metodológica"):
         st.write("Classificação topográfica baseada em tercis estatísticos das altitudes da região.")
 
     col1, col2 = st.columns(2)
     with col1:
         df_alt = df_plot.sort_values('altitude', ascending=False)
         fig1 = px.line(df_alt, x='sub_bairro', y='altitude', markers=True, title="Perfil de Altitude por Setor")
-        fig1.update_traces(line_color='grey', marker=dict(color='crimson'))
-        fig1.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        fig1.update_traces(line_color='#7f8c8d', marker=dict(color='#c0392b', size=8))
+        fig1.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None)
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
         df_pcd_ord = df_plot.sort_values('PCDS — Planilha1_%', ascending=False)
         fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='PCDS — Planilha1_%', title="Concentração de PCDs por Setor")
-        fig2.update_traces(marker_color='darkorange')
-        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        fig2.update_traces(marker_color='#e67e22', marker_line_width=0)
+        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None)
         st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("#### Matriz de Correlação Clusterizada")
@@ -205,34 +205,40 @@ def renderizar_graficos(df_final):
         color_discrete_map={'1. Baixo': '#FFB300', '2. Médio': '#FF7F00', '3. Alto': '#D32F2F'},
         title="Dispersão: Altitude vs Densidade PCD"
     )
-    fig3.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+    fig3.update_traces(marker=dict(line=dict(width=1, color='white')))
     fig3.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig3, use_container_width=True)
 
-    # --- GRÁFICO 4: CONCLUSÃO SUAVIZADA (BARRA HORIZONTAL) ---
+    # --- GRÁFICO 4: CONCLUSÃO EM LINHA (MAIS SUAVE E ANALÍTICO) ---
     resumo = df_plot.groupby('Faixa de Relevo', observed=False)['PCDS — Planilha1_%'].mean().reset_index()
     
-    # Criamos barras horizontais mais finas e limpas
-    fig4 = px.bar(resumo, 
-                  y='Faixa de Relevo', 
-                  x='PCDS — Planilha1_%',
-                  orientation='h',
-                  title="Conclusão: Média de PCDs por Nível de Terreno",
-                  color='Faixa de Relevo',
-                  color_discrete_map={'1. Baixo': '#FFB300', '2. Médio': '#FF7F00', '3. Alto': '#D32F2F'},
-                  text_auto='.4f') # Mostra o valor exato no fim da barra
+    fig4 = go.Figure()
+    
+    # Adicionamos a linha de tendência
+    fig4.add_trace(go.Scatter(
+        x=resumo['Faixa de Relevo'],
+        y=resumo['PCDS — Planilha1_%'],
+        mode='lines+markers+text',
+        line=dict(color='#34495e', width=4, shape='spline'), # Spline para suavizar a curva
+        marker=dict(
+            size=16,
+            color=['#FFB300', '#FF7F00', '#D32F2F'], # Cores por nível
+            line=dict(width=2, color='white')
+        ),
+        text=resumo['PCDS — Planilha1_%'].apply(lambda x: f"{x*100:.2f}%"),
+        textposition="top center",
+        textfont=dict(size=12, color='#2c3e50')
+    ))
     
     fig4.update_layout(
-        showlegend=False,
-        yaxis_title=None,
-        xaxis_title="Média da Densidade PCD",
+        title="Conclusão: Tendência de Concentração por Nível de Terreno",
+        xaxis_title="Nível do Terreno",
+        yaxis_title="Média Densidade PCD (%)",
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        bargap=0.4, # Deixa as barras mais finas e "suaves"
-        xaxis=dict(showgrid=False, zeroline=False), # Remove linhas de grade
-        yaxis=dict(showgrid=False)
+        yaxis=dict(showgrid=True, gridcolor='#f0f0f0', zeroline=False),
+        xaxis=dict(showgrid=False)
     )
-    fig4.update_traces(marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.8)
     
     st.plotly_chart(fig4, use_container_width=True)
 
