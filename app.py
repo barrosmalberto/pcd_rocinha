@@ -31,7 +31,7 @@ with st.sidebar:
     
     st.markdown("---")
     if "Hipsometria" in modo_analise:
-        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo | 🟠 Médio | 🔴 Alto", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo (Claro) | 🟠 Médio | 🔴 Alto", unsafe_allow_html=True)
     else:
         st.markdown("🏢 **Classes de Declividade:**<br>🟢 Plano (Claro) → 🔴 Crítico (Escuro)", unsafe_allow_html=True)
 
@@ -44,7 +44,7 @@ st.title("🏔️ Índice de Acessibilidade Vertical: Rocinha")
 st.caption("Análise multivariada: Hierarquia visual com Vermelho como alerta máximo.")
 
 # ==========================================
-# 2. MOTOR DE DADOS (ETL COM CORES INVERTIDAS)
+# 2. MOTOR DE DADOS (ETL COM LIMPEZA DE DADOS)
 # ==========================================
 
 @st.cache_data(show_spinner=False)
@@ -70,7 +70,8 @@ def carregar_dados_completos():
     if gdf.crs != "EPSG:4326": gdf = gdf.to_crs(epsg=4326)
     
     gdf = gdf.rename(columns={'PCDS — Planilha1_%': 'Percentual de PCDs'})
-    gdf['Percentual de PCDs'] = gdf['Percentual de PCDs'] * 100 
+    # --- ARREDONDAMENTO DO PERCENTUAL ---
+    gdf['Percentual de PCDs'] = (gdf['Percentual de PCDs'] * 100).round(2)
         
     with st.spinner("🌍 Mapeando relevo e ajustando alertas visuais..."):
         centroids = gdf.geometry.centroid
@@ -82,31 +83,32 @@ def carregar_dados_completos():
         alt_a = obter_elevacao_lote(df_pontos[['lat', 'lon']])
         alt_b = obter_elevacao_lote(df_pontos.rename(columns={'lat_b':'lat', 'lon_b':'lon'})[['lat', 'lon']])
         
-        gdf['altitude'] = alt_a
-        gdf['declividade'] = abs(np.array(alt_a) - np.array(alt_b)) / 130 * 100
+        # --- ARREDONDAMENTO DE ALTITUDE E DECLIVIDADE ---
+        gdf['altitude'] = np.array(alt_a).round(1)
+        gdf['declividade'] = (abs(np.array(alt_a) - np.array(alt_b)) / 130 * 100).round(1)
 
-    # --- PALETA HIPSOMETRIA (3 CLASSES: VERDE -> LARANJA -> VERMELHO) ---
+    # --- NOMES TÉCNICOS PARA O TOOLTIP (EVITA COLCHETES) ---
+    gdf['pcd_tooltip'] = gdf['Percentual de PCDs']
+    gdf['alt_tooltip'] = gdf['altitude']
+    gdf['dec_tooltip'] = gdf['declividade']
+
+    # --- PALETA HIPSOMETRIA (3 CLASSES) ---
     ranks_alt = pd.qcut(gdf['altitude'], 3, labels=[0, 1, 2]).astype(int)
-    # Verde Pálido (Baixo) -> Laranja (Médio) -> Vermelho Crítico (Alto)
     palette_3 = [[200, 230, 201, 180], [255, 152, 0, 180], [211, 47, 47, 180]]
     gdf['cor_altitude'] = [palette_3[r] for r in ranks_alt]
 
-    # --- PALETA DECLIVIDADE (7 CLASSES: VERDE -> ROXO -> VERMELHO) ---
+    # --- PALETA DECLIVIDADE (7 CLASSES) ---
     ranks_slope = pd.qcut(gdf['declividade'].rank(method='first'), 7, labels=range(7)).astype(int)
     palette_7 = [
-        [232, 245, 233, 180], # 1. Verde Quase Branco (Plano)
-        [165, 214, 167, 180], # 2. Verde Suave
-        [255, 245, 157, 180], # 3. Amarelo Claro
-        [255, 213, 79, 180],  # 4. Amarelo Ouro
-        [245, 124, 0, 180],   # 5. Laranja
-        [74, 20, 140, 180],   # 6. Roxo (Extremo Técnico)
-        [211, 47, 47, 180]    # 7. Vermelho Vibrante (Crítico Absoluto)
+        [232, 245, 233, 180], [165, 214, 167, 180], [255, 245, 157, 180],
+        [255, 213, 79, 180], [245, 124, 0, 180], [74, 20, 140, 180], [211, 47, 47, 180]
     ]
     gdf['cor_declividade'] = [palette_7[r] for r in ranks_slope]
 
     # Bolhas PCD
     min_pct, max_pct = gdf['Percentual de PCDs'].min(), gdf['Percentual de PCDs'].max()
     gdf['posicao_bolha'] = gdf.apply(lambda r: [r.geometry.centroid.x, r.geometry.centroid.y, (r['altitude'] * 0.2) + 1.5], axis=1)
+    
     def calc_cor_pcd(p):
         frac = (p - min_pct) / (max_pct - min_pct) if max_pct > min_pct else 0
         if frac < 0.33: return [255, 215, 0, 230]
@@ -132,7 +134,7 @@ gdf_filtrado = gdf_pcd[gdf_pcd['Percentual de PCDs'] >= valor_slider]
 cor_ativa = "cor_altitude" if "Hipsometria" in modo_analise else "cor_declividade"
 
 # ==========================================
-# 4. MAPA 3D
+# 4. MAPA 3D (COM TOOLTIP REFINADO)
 # ==========================================
 st.markdown(f"### Maquete Técnica: {modo_analise}")
 
@@ -150,11 +152,24 @@ camada_bolhas = pdk.Layer(
     stroked=True, line_width_min_pixels=1.5, pickable=True, auto_highlight=True
 )
 
+# --- CONFIGURAÇÃO DE TOOLTIP PROFISSIONAL ---
+tooltip_config = {
+    "html": """
+        <div style='font-family: sans-serif; font-size: 13px;'>
+            <b>Setor:</b> {sub_bairro}<br>
+            <b>Altitude:</b> {alt_tooltip} m<br>
+            <b>Inclinação:</b> {dec_tooltip}%<br>
+            <b style='color: #e67e22;'>PCDs:</b> {pcd_tooltip}%
+        </div>
+    """,
+    "style": {"backgroundColor": "rgba(0,0,0,0.8)", "color": "white", "border": "1px solid #555"}
+}
+
 st.pydeck_chart(pdk.Deck(
     layers=[camada_terreno, camada_bolhas],
     initial_view_state=pdk.ViewState(latitude=gdf_pcd.geometry.centroid.y.mean(), longitude=gdf_pcd.geometry.centroid.x.mean(), zoom=15.2, pitch=45, bearing=5),
     map_style=basemap_pdk,
-    tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Alt:</b> {altitude}m<br><b>Inclinação:</b> {declividade:.1f}%<br><b>PCD:</b> {Percentual de PCDs:.2f}%"}
+    tooltip=tooltip_config
 ))
 
 # ==========================================
