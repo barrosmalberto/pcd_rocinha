@@ -25,7 +25,7 @@ with st.sidebar:
     st.markdown("---")
     st.info("💡 **Dica:** Use o botão direito do mouse para inclinar a maquete.")
 
-st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
+st.title("🏔️ Índice de Acessibilidade Vertical: Rocinha")
 st.caption("Correlação entre topografia e vulnerabilidade espacial (pessoas com deficiência).")
 
 # ==========================================
@@ -120,7 +120,7 @@ gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
 # ==========================================
 # 4. MAPA PYDECK (ÂNGULO DE 45°)
 # ==========================================
-st.markdown("### Maquete Técnica Interativa")
+st.markdown("### Maquete Interativa")
 
 camada_terreno = pdk.Layer(
     "GeoJsonLayer",
