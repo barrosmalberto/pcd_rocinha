@@ -6,11 +6,12 @@ import numpy as np
 import requests
 import time
 import plotly.graph_objects as go
+import plotly.express as px
 
 # --- Configuração Inicial ---
 st.set_page_config(page_title="Rocinha PCD & Hipsometria", layout="wide")
 
-# Barra lateral com a Legenda
+# Barra lateral com a Legenda e o Filtro
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/814/814513.png", width=50) # Ícone decorativo
     st.markdown("### 📌 Legenda Analítica")
@@ -21,7 +22,10 @@ with st.sidebar:
     st.markdown("🟡 **Amarelo/Pequeno:** Baixa Concentração")
     st.markdown("🔴 **Vermelho/Grande:** Alta Concentração")
     st.markdown("---")
-    st.info("💡 **Dica de UX:** Segure o botão direito do mouse e arraste para inclinar e girar o mapa 3D.")
+    st.info("💡 **Dica de UX:** Segure o botão direito do rato e arraste para inclinar e girar o mapa 3D.")
+    
+    st.markdown("### 🎛️ Filtro Analítico")
+    # O slider será configurado dinamicamente após carregarmos os dados
 
 st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
 
@@ -32,7 +36,7 @@ def obter_elevacao_lote(df, lat_col="lat", lon_col="lon", chunk_size=100):
     locations = [{"latitude": row[lat_col], "longitude": row[lon_col]} for _, row in df.iterrows()]
     url = "https://api.open-elevation.com/api/v1/lookup"
     
-    progresso = st.progress(0, text="🌍 Consultando API de Elevação do Terreno...")
+    progresso = st.progress(0, text="🌍 A consultar API de Elevação do Terreno...")
     
     for i in range(0, len(locations), chunk_size):
         chunk = locations[i : i + chunk_size]
@@ -53,14 +57,14 @@ def obter_elevacao_lote(df, lat_col="lat", lon_col="lon", chunk_size=100):
     progresso.empty()
     return elevacoes
 
-# --- ETL Unificado: Base Sutil + Bolhas de PCD ---
+# --- ETL Unificado: Base Subtil + Bolhas de PCD ---
 @st.cache_data
 def carregar_dados_completos():
     gdf = gpd.read_file("rocinha_pcds.geojson")
     if gdf.crs != "EPSG:4326":
         gdf = gdf.to_crs(epsg=4326)
         
-    with st.spinner("🌍 Calculando hipsometria dos bairros..."):
+    with st.spinner("🌍 A calcular hipsometria dos bairros..."):
         centroids = gdf.geometry.centroid
         temp_df = pd.DataFrame({'lat': centroids.y, 'lon': centroids.x})
         gdf['altitude'] = obter_elevacao_lote(temp_df)
@@ -88,22 +92,13 @@ def carregar_dados_completos():
     # Raio da bolha
     gdf['raio_bolha'] = gdf['PCDS — Planilha1_%'].apply(lambda x: 10 + ((x - min_pct) / (max_pct - min_pct) * 45) if max_pct > min_pct else 15)
     
-    # 3. GERAÇÃO DE GRADE PARA HISTOGRAMA
-    with st.spinner("⛰️ Mapeando relevo base geral da favela..."):
-        lon_min, lat_min, lon_max, lat_max = gdf.total_bounds
-        df_grade = pd.DataFrame({
-            "lat": np.random.uniform(lat_min, lat_max, 500),
-            "lon": np.random.uniform(lon_min, lon_max, 500)
-        })
-        df_grade['altitude'] = obter_elevacao_lote(df_grade)
-    
-    return gdf, df_grade
+    return gdf
 
-gdf_pcd, df_grade = carregar_dados_completos()
+# Executa o ETL
+gdf_pcd = carregar_dados_completos()
 
-# --- FILTRO DINÂMICO NA SIDEBAR ---
+# --- Configuração do Slider Dinâmico na Sidebar ---
 with st.sidebar:
-    st.markdown("### 🎛️ Filtro Analítico")
     min_val = float(gdf_pcd['PCDS — Planilha1_%'].min())
     max_val = float(gdf_pcd['PCDS — Planilha1_%'].max())
     
@@ -117,7 +112,6 @@ with st.sidebar:
 
 # Aplica o filtro APENAS na camada de bolhas (mantém o terreno completo)
 gdf_bolhas_filtradas = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= filtro_pct]
-
 
 # --- Renderização do Mapa: Terreno vs Bolhas PCD ---
 st.markdown("### Mapa de Mobilidade: O Terreno como Barreira para PCDs")
@@ -166,36 +160,80 @@ st.pydeck_chart(pdk.Deck(
     }
 ))
 
-st.divider()
-
-# --- Painel de Validação Analítica ---
+# --- Painel de Validação Analítica (Gráficos Direcionados) ---
 @st.fragment
-def painel_analitico(gdf_bolhas_filtradas, df_grade):
-    st.subheader("📊 Validação de Hipótese: Desigualdade de Acesso Vertical")
+def painel_analitico(gdf_bolhas_filtradas):
+    st.divider()
+    st.subheader("📊 Painel de Validação de Hipótese")
     
-    # Se o filtro remover todas as bolhas, evitamos erro de divisão por zero
+    # Se o filtro remover todas as bolhas, interrompe a renderização dos gráficos
     if gdf_bolhas_filtradas.empty:
-        st.warning("Nenhum setor atinge esse critério de filtro. Reduza o valor no painel lateral.")
+        st.warning("Nenhum setor atinge o critério do filtro atual. Reduza o valor no painel lateral.")
         return
         
-    m1, m2 = st.columns(2)
-    media_favela = df_grade['altitude'].mean()
-    media_pcd = gdf_bolhas_filtradas['altitude'].mean() # Média dinâmica que muda com o slider
+    # Prepara o DataFrame para os gráficos (removemos a geometria)
+    df_plot = pd.DataFrame(gdf_bolhas_filtradas.drop(columns=['geometry']))
     
-    m1.metric("Altitude Média (Terreno Geral)", f"{media_favela:.1f} m")
-    m2.metric("Altitude Média (Setores Filtrados)", f"{media_pcd:.1f} m", delta=f"{(media_pcd - media_favela):.1f} m vs Média")
+    # --- GRÁFICO 1: Altitude por Área (Em Linha e Decrescente) ---
+    df_alt = df_plot.sort_values(by='altitude', ascending=False)
     
-    fig = go.Figure()
-    fig.add_trace(go.Histogram(x=df_grade['altitude'], name='Relevo Geral', marker_color='gray', opacity=0.5, histnorm='probability'))
-    fig.add_trace(go.Histogram(x=gdf_bolhas_filtradas['altitude'], name='Setores PCD', marker_color='crimson', opacity=0.7, histnorm='probability'))
-    
-    fig.update_layout(
-        barmode='overlay', 
-        title_text="Distribuição por Faixa de Altitude", 
-        xaxis_title_text='Altitude (Metros)',
-        yaxis_title_text='Probabilidade'
+    fig1 = go.Figure()
+    fig1.add_trace(go.Scatter(
+        x=df_alt['sub_bairro'], 
+        y=df_alt['altitude'],
+        mode='lines+markers',
+        line=dict(color='gray', width=3),
+        marker=dict(size=10, color='crimson'),
+        name='Altitude'
+    ))
+    fig1.update_layout(
+        title="1. Perfil Topográfico: Altitude Média por Setor (Ordem Decrescente)",
+        xaxis_title="Setores da Rocinha",
+        yaxis_title="Altitude (Metros)",
+        xaxis_tickangle=-45,
+        margin=dict(b=100)
     )
-    st.plotly_chart(fig, use_container_width=True)
+    
+    # --- GRÁFICO 2: Percentual de PCDs por Área (Barras e Decrescente) ---
+    df_pct = df_plot.sort_values(by='PCDS — Planilha1_%', ascending=False)
+    
+    fig2 = go.Figure()
+    fig2.add_trace(go.Bar(
+        x=df_pct['sub_bairro'], 
+        y=df_pct['PCDS — Planilha1_%'],
+        marker_color='darkorange',
+        text=df_pct['PCDS — Planilha1_%'].apply(lambda x: f"{x*100:.2f}%"),
+        textposition='outside'
+    ))
+    fig2.update_layout(
+        title="2. Concentração: Percentual de PCDs por Setor (Ordem Decrescente)",
+        xaxis_title="Setores da Rocinha",
+        yaxis_title="Percentual de PCDs (%)",
+        xaxis_tickangle=-45,
+        margin=dict(b=100)
+    )
+    
+    # --- GRÁFICO 3: Correlação Direta (Altitude x PCDs) ---
+    fig3 = px.scatter(
+        df_plot, 
+        x='altitude', 
+        y='PCDS — Planilha1_%',
+        hover_name='sub_bairro',
+        size='PCDS — Planilha1_%',
+        color='altitude',
+        color_continuous_scale='Reds',
+        title="3. Matriz de Hipótese: Altitude vs Concentração de PCDs"
+    )
+    fig3.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+    fig3.update_layout(
+        xaxis_title="Altitude (Metros)",
+        yaxis_title="Percentual de PCDs (%)"
+    )
 
-# Passamos a versão filtrada para que o Histograma e as Métricas também atualizem dinamicamente!
-painel_analitico(gdf_bolhas_filtradas, df_grade)
+    # Renderiza os três gráficos organizados na tela
+    st.plotly_chart(fig1, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig3, use_container_width=True)
+
+# Executa o painel com os dados filtrados
+painel_analitico(gdf_bolhas_filtradas)
