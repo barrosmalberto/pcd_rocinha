@@ -18,7 +18,7 @@ with st.sidebar:
     st.markdown("### 📌 Legenda Analítica")
     st.markdown("---")
     
-    # --- SELETOR DE BASEMAP (NATIVOS) ---
+    # --- SELETOR DE BASEMAP ---
     st.markdown("### 🗺️ Estilo do Mapa")
     estilos_mapa = {
         "Claro (Padrão)": "light",
@@ -74,6 +74,10 @@ def carregar_dados_completos():
     gdf = gpd.read_file("rocinha_pcds.geojson")
     if gdf.crs != "EPSG:4326":
         gdf = gdf.to_crs(epsg=4326)
+
+    # --- LIMPEZA E RENOMEAÇÃO (O QUE VOCÊ PEDIU) ---
+    gdf = gdf.rename(columns={'PCDS — Planilha1_%': 'Percentual de PCDs'})
+    gdf['Percentual de PCDs'] = gdf['Percentual de PCDs'] * 100 # Converte de decimal para porcentagem real
         
     with st.spinner("🌍 Mapeando altitudes dos setores..."):
         centroids = gdf.geometry.centroid
@@ -98,16 +102,16 @@ def carregar_dados_completos():
         
     gdf['cor_terreno'] = gdf['altitude'].apply(cor_altimetria_light)
 
-    min_pct = gdf['PCDS — Planilha1_%'].min()
-    max_pct = gdf['PCDS — Planilha1_%'].max()
+    min_pct = gdf['Percentual de PCDs'].min()
+    max_pct = gdf['Percentual de PCDs'].max()
     gdf['posicao_bolha'] = gdf.apply(lambda r: [r.geometry.centroid.x, r.geometry.centroid.y, (r['altitude'] * 0.2) + 1.5], axis=1)
     
     def calc_cor_light(p):
         val = (p - min_pct) / (max_pct - min_pct) if max_pct > min_pct else 0
         return [int(255 - (75 * val)), int(200 * (1 - val)), 0, 230]
     
-    gdf['cor_pcd'] = gdf['PCDS — Planilha1_%'].apply(calc_cor_light)
-    gdf['raio_bolha'] = gdf['PCDS — Planilha1_%'].apply(lambda x: 12 + ((x - min_pct) / (max_pct - min_pct) * 38))
+    gdf['cor_pcd'] = gdf['Percentual de PCDs'].apply(calc_cor_light)
+    gdf['raio_bolha'] = gdf['Percentual de PCDs'].apply(lambda x: 12 + ((x - min_pct) / (max_pct - min_pct) * 38))
     
     return gdf
 
@@ -118,15 +122,16 @@ gdf_pcd = carregar_dados_completos()
 # ==========================================
 with st.sidebar:
     st.markdown("### 🎛️ Filtro de Densidade")
+    # Agora o slider mostra de 0 a 100 (ou o range real do percentual)
     valor_slider = st.slider(
         "Mostrar apenas setores com mais de (% PCD):",
-        float(gdf_pcd['PCDS — Planilha1_%'].min()),
-        float(gdf_pcd['PCDS — Planilha1_%'].max()),
-        float(gdf_pcd['PCDS — Planilha1_%'].min()),
-        format="%.4f"
+        float(gdf_pcd['Percentual de PCDs'].min()),
+        float(gdf_pcd['Percentual de PCDs'].max()),
+        float(gdf_pcd['Percentual de PCDs'].min()),
+        format="%.2f%%"
     )
 
-gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
+gdf_filtrado = gdf_pcd[gdf_pcd['Percentual de PCDs'] >= valor_slider]
 
 # ==========================================
 # 4. MAPA PYDECK (VERSÃO REFINADA)
@@ -172,7 +177,7 @@ st.pydeck_chart(pdk.Deck(
     layers=[camada_terreno, camada_bolhas],
     initial_view_state=visao_mapa,
     map_style=basemap_pdk,
-    tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Altitude:</b> {altitude}m<br><b>PCDs:</b> {PCDS — Planilha1_%}"}
+    tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Altitude:</b> {altitude}m<br><b>Percentual PCD:</b> {Percentual de PCDs}%"}
 ))
 
 # ==========================================
@@ -202,47 +207,44 @@ def renderizar_graficos(df_final):
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
-        df_pcd_ord = df_plot.sort_values('PCDS — Planilha1_%', ascending=False)
-        fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='PCDS — Planilha1_%', title="Concentração de PCDs por Setor")
-        fig2.update_traces(marker_color='#e67e22', marker_line_width=0)
-        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None)
+        df_pcd_ord = df_plot.sort_values('Percentual de PCDs', ascending=False)
+        fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='Percentual de PCDs', title="Concentração de PCDs por Setor")
+        fig2.update_traces(marker_color='#e67e22')
+        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title="Porcentagem (%)")
         st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("#### Matriz de Correlação Clusterizada")
     fig3 = px.scatter(
-        df_plot, x='altitude', y='PCDS — Planilha1_%',
-        color='Faixa de Relevo', size='PCDS — Planilha1_%',
+        df_plot, x='altitude', y='Percentual de PCDs',
+        color='Faixa de Relevo', size='Percentual de PCDs',
         hover_name='sub_bairro',
         color_discrete_map={'1. Baixo': '#FFB300', '2. Médio': '#FF7F00', '3. Alto': '#D32F2F'},
-        title="Dispersão: Altitude vs Densidade PCD"
+        title="Dispersão: Altitude vs Densidade PCD",
+        labels={'altitude': 'Altitude (m)', 'Percentual de PCDs': 'PCDs (%)'}
     )
     fig3.update_traces(marker=dict(line=dict(width=1, color='white')))
     fig3.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig3, use_container_width=True)
 
     # --- GRÁFICO 4: CONCLUSÃO EM LINHA (SIGNATURE) ---
-    resumo = df_plot.groupby('Faixa de Relevo', observed=False)['PCDS — Planilha1_%'].mean().reset_index()
+    resumo = df_plot.groupby('Faixa de Relevo', observed=False)['Percentual de PCDs'].mean().reset_index()
     fig4 = go.Figure()
     fig4.add_trace(go.Scatter(
         x=resumo['Faixa de Relevo'],
-        y=resumo['PCDS — Planilha1_%'],
+        y=resumo['Percentual de PCDs'],
         mode='lines+markers+text',
         line=dict(color='#34495e', width=4, shape='spline'),
-        marker=dict(
-            size=24,
-            color=['#FFB300', '#FF7F00', '#D32F2F'],
-            line=dict(width=2, color='white')
-        ),
-        text=resumo['PCDS — Planilha1_%'].apply(lambda x: f"{x*100:.2f}%"),
+        marker=dict(size=24, color=['#FFB300', '#FF7F00', '#D32F2F'], line=dict(width=2, color='white')),
+        text=resumo['Percentual de PCDs'].apply(lambda x: f"{x:.2f}%"),
         textposition="top center",
         textfont=dict(size=10, color='#2c3e50')
     ))
     fig4.update_layout(
-        title="Conclusão: Tendência de Concentração por Nível de Terreno",
+        title="Conclusão: Tendência de Concentração por Nível de Terreno", 
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(0,0,0,0)',
-        xaxis_title="Nível do Terreno",
-        yaxis_title="Média Densidade PCD (%)"
+        yaxis_title="Média PCD (%)",
+        xaxis_title="Nível do Terreno"
     )
     st.plotly_chart(fig4, use_container_width=True)
 
