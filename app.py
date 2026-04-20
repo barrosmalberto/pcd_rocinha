@@ -25,13 +25,13 @@ with st.sidebar:
     )
     
     st.markdown("### 🗺️ Estilo do Mapa")
-    estilos_mapa = {"Claro (Padrão)": "light", "Modo Escuro": "dark"}
+    estilos_mapa = {"Claro (Padrão)": "light", "Modo Escuro": "dark", "Híbrido/Estradas": "road"}
     mapa_selecionado = st.selectbox("Escolha a base:", list(estilos_mapa.keys()))
     basemap_pdk = estilos_mapa[mapa_selecionado]
     
     st.markdown("---")
     if "Hipsometria" in modo_analise:
-        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo (Claro) | 🟠 Médio | 🔴 Alto (Crítico)", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo | 🟠 Médio | 🔴 Alto", unsafe_allow_html=True)
     else:
         st.markdown("🏢 **Classes de Declividade:**<br>🟢 Plano (Claro) → 🔴 Crítico (Escuro)", unsafe_allow_html=True)
 
