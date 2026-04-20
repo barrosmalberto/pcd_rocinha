@@ -18,7 +18,7 @@ with st.sidebar:
     st.markdown("### 📌 Legenda Analítica")
     st.markdown("---")
     
-    # --- SELETOR DE BASEMAP ---
+    # --- SELETOR DE BASEMAP (NATIVOS) ---
     st.markdown("### 🗺️ Estilo do Mapa")
     estilos_mapa = {
         "Claro (Padrão)": "light",
@@ -28,8 +28,8 @@ with st.sidebar:
     basemap_pdk = estilos_mapa[mapa_selecionado]
     
     st.markdown("---")
-    st.markdown("🏢 **Malha Territorial (Altimetria):**<br>Relevo suavizado. *Verde-Água* (áreas baixas), *Ametista* (meia-encosta) e *Terracota* (topos).", unsafe_allow_html=True)
-    st.markdown("🎨 **Indicadores PCD (Bolhas):**<br>O tamanho e a cor indicam a concentração de PCDs.", unsafe_allow_html=True)
+    st.markdown("🏢 **Malha Territorial:**<br>Relevo suavizado. *Verde-Água* (áreas baixas), *Ametista* (meia-encosta) e *Terracota* (topos).", unsafe_allow_html=True)
+    st.markdown("🎨 **Indicadores PCD (Bolhas):**")
     st.markdown("🟡 **Amarelo:** Baixa Densidade")
     st.markdown("🟠 **Laranja:** Média Densidade")
     st.markdown("🔴 **Vermelho:** Alta Densidade")
@@ -74,10 +74,10 @@ def carregar_dados_completos():
     gdf = gpd.read_file("rocinha_pcds.geojson")
     if gdf.crs != "EPSG:4326":
         gdf = gdf.to_crs(epsg=4326)
-
-    # --- LIMPEZA E RENOMEAÇÃO (O QUE VOCÊ PEDIU) ---
+    
+    # --- AJUSTE DE PORCENTAGEM E RENOMEAÇÃO ---
     gdf = gdf.rename(columns={'PCDS — Planilha1_%': 'Percentual de PCDs'})
-    gdf['Percentual de PCDs'] = gdf['Percentual de PCDs'] * 100 # Converte de decimal para porcentagem real
+    gdf['Percentual de PCDs'] = gdf['Percentual de PCDs'] * 100 
         
     with st.spinner("🌍 Mapeando altitudes dos setores..."):
         centroids = gdf.geometry.centroid
@@ -122,9 +122,8 @@ gdf_pcd = carregar_dados_completos()
 # ==========================================
 with st.sidebar:
     st.markdown("### 🎛️ Filtro de Densidade")
-    # Agora o slider mostra de 0 a 100 (ou o range real do percentual)
     valor_slider = st.slider(
-        "Mostrar apenas setores com mais de (% PCD):",
+        "Mostrar setores com mais de (% PCD):",
         float(gdf_pcd['Percentual de PCDs'].min()),
         float(gdf_pcd['Percentual de PCDs'].max()),
         float(gdf_pcd['Percentual de PCDs'].min()),
@@ -134,7 +133,7 @@ with st.sidebar:
 gdf_filtrado = gdf_pcd[gdf_pcd['Percentual de PCDs'] >= valor_slider]
 
 # ==========================================
-# 4. MAPA PYDECK (VERSÃO REFINADA)
+# 4. MAPA PYDECK
 # ==========================================
 st.markdown("### Maquete Interativa")
 
@@ -177,7 +176,7 @@ st.pydeck_chart(pdk.Deck(
     layers=[camada_terreno, camada_bolhas],
     initial_view_state=visao_mapa,
     map_style=basemap_pdk,
-    tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Altitude:</b> {altitude}m<br><b>Percentual PCD:</b> {Percentual de PCDs}%"}
+    tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Altitude:</b> {altitude}m<br><b>PCD:</b> {Percentual de PCDs}%"}
 ))
 
 # ==========================================
@@ -201,16 +200,16 @@ def renderizar_graficos(df_final):
     col1, col2 = st.columns(2)
     with col1:
         df_alt = df_plot.sort_values('altitude', ascending=False)
-        fig1 = px.line(df_alt, x='sub_bairro', y='altitude', markers=True, title="Perfil de Altitude por Setor")
+        fig1 = px.line(df_alt, x='sub_bairro', y='altitude', markers=True, title="Perfil de Altitude")
         fig1.update_traces(line_color='#7f8c8d', marker=dict(color='#c0392b', size=8))
         fig1.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None)
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
         df_pcd_ord = df_plot.sort_values('Percentual de PCDs', ascending=False)
-        fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='Percentual de PCDs', title="Concentração de PCDs por Setor")
+        fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='Percentual de PCDs', title="Concentração por Setor")
         fig2.update_traces(marker_color='#e67e22')
-        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title="Porcentagem (%)")
+        fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None, yaxis_title="%")
         st.plotly_chart(fig2, use_container_width=True)
 
     st.markdown("#### Matriz de Correlação Clusterizada")
@@ -226,7 +225,7 @@ def renderizar_graficos(df_final):
     fig3.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig3, use_container_width=True)
 
-    # --- GRÁFICO 4: CONCLUSÃO EM LINHA (SIGNATURE) ---
+    # --- GRÁFICO 4: CONCLUSÃO COM LABELS INTELIGENTES ---
     resumo = df_plot.groupby('Faixa de Relevo', observed=False)['Percentual de PCDs'].mean().reset_index()
     fig4 = go.Figure()
     fig4.add_trace(go.Scatter(
@@ -237,7 +236,8 @@ def renderizar_graficos(df_final):
         marker=dict(size=24, color=['#FFB300', '#FF7F00', '#D32F2F'], line=dict(width=2, color='white')),
         text=resumo['Percentual de PCDs'].apply(lambda x: f"{x:.2f}%"),
         textposition="top center",
-        textfont=dict(size=10, color='#2c3e50')
+        # REMOVIDO O COLOR FIXO PARA QUE ELE ADAPTE AO DARK/LIGHT MODE
+        textfont=dict(size=11) 
     ))
     fig4.update_layout(
         title="Conclusão: Tendência de Concentração por Nível de Terreno", 
