@@ -161,7 +161,7 @@ visao_mapa = pdk.ViewState(
 st.pydeck_chart(pdk.Deck(
     layers=[camada_terreno, camada_bolhas],
     initial_view_state=visao_mapa,
-    map_style="dark",
+    map_style="light",
     tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Altitude:</b> {altitude}m<br><b>PCDs:</b> {PCDS — Planilha1_%}"}
 ))
 
