@@ -17,7 +17,7 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/814/814513.png", width=50)
     st.markdown("### 📌 Legenda Analítica")
     st.markdown("---")
-    st.markdown("🏢 **Malha Territorial (Altimetria):**<br>Relevo suavizado. *Verde-Água* (áreas baixas), *Ametista* (encostas) e *Terracota* (topos).", unsafe_allow_html=True)
+    st.markdown("🏢 **Malha Territorial (Altimetria):**<br>Relevo suavizado. *Verde-Água* (áreas baixas), *Ametista* (meia-encosta) e *Terracota* (topos).", unsafe_allow_html=True)
     st.markdown("🎨 **Indicadores PCD (Bolhas):**<br>O tamanho e a cor indicam a concentração de PCDs.", unsafe_allow_html=True)
     st.markdown("🟡 **Amarelo:** Baixa Densidade")
     st.markdown("🔴 **Vermelho:** Alta Densidade")
@@ -221,7 +221,7 @@ def renderizar_graficos(df_final):
         mode='lines+markers+text',
         line=dict(color='#34495e', width=4, shape='spline'), # Spline para suavizar a curva
         marker=dict(
-            size=16,
+            size=24,
             color=['#FFB300', '#FF7F00', '#D32F2F'], # Cores por nível
             line=dict(width=2, color='white')
         ),
