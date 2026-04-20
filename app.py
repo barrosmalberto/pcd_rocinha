@@ -35,7 +35,7 @@ with st.sidebar:
     st.markdown("🟠 **Laranja:** Média Densidade")
     st.markdown("🔴 **Vermelho:** Alta Densidade")
     st.markdown("---")
-    st.info("💡 **Dica:** Use o botão direito do rato para inclinar a maquete.")
+    st.info("💡 **Dica:** Use o botão direito do mouse para inclinar a maquete.")
 
 st.title("🏔️ Índice de Acessibilidade Vertical: Rocinha")
 st.caption("Correlação entre topografia e vulnerabilidade espacial (pessoas com deficiência).")
