@@ -17,15 +17,15 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/814/814513.png", width=50)
     st.markdown("### 📌 Legenda Analítica")
     st.markdown("---")
-    st.markdown("🏢 **Terreno (Z):**<br>Representa a altitude. Áreas mais escuras são os topos dos morros.", unsafe_allow_html=True)
-    st.markdown("🎨 **Bolhas (PCDs):**<br>O tamanho e a cor indicam a concentração de PCDs.", unsafe_allow_html=True)
+    st.markdown("🏢 **Malha Territorial (Altimetria):**<br>Relevo suavizado. *Tons frios (Azul)* representam áreas baixas, *tons quentes suaves (Lilás/Rosado)* representam topos.", unsafe_allow_html=True)
+    st.markdown("🎨 **Indicadores PCD (Bolhas):**<br>O tamanho e a cor indicam a concentração de PCDs.", unsafe_allow_html=True)
     st.markdown("🟡 **Amarelo:** Baixa Densidade")
     st.markdown("🔴 **Vermelho:** Alta Densidade")
     st.markdown("---")
-    st.info("💡 **Dica:** Use o botão direito do rato para inclinar o mapa e ver a volumetria.")
+    st.info("💡 **Dica:** Use o botão direito do mouse para girar a maquete interativa.")
 
 st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
-st.caption("Análise de correlação entre topografia e vulnerabilidade social.")
+st.caption("Visualização técnica refinada: Correlação entre topografia e vulnerabilidade.")
 
 # ==========================================
 # 2. MOTOR DE DADOS (API E ETL)
@@ -37,7 +37,7 @@ def obter_elevacao_lote(df, lat_col="lat", lon_col="lon", chunk_size=100):
     locations = [{"latitude": row[lat_col], "longitude": row[lon_col]} for _, row in df.iterrows()]
     url = "https://api.open-elevation.com/api/v1/lookup"
     
-    progresso = st.progress(0, text="🌍 A consultar relevo (API Open-Elevation)...")
+    progresso = st.progress(0, text="🌍 Consultando relevo (API Open-Elevation)...")
     
     for i in range(0, len(locations), chunk_size):
         chunk = locations[i : i + chunk_size]
@@ -69,21 +69,37 @@ def carregar_dados_completos():
         gdf['altitude'] = obter_elevacao_lote(temp_df)
     
     min_alt, max_alt = gdf['altitude'].min(), gdf['altitude'].max()
-    gdf['cor_terreno'] = gdf['altitude'].apply(lambda x: [int(120 - (80 * (x-min_alt)/(max_alt-min_alt))), 
-                                                         int(120 - (80 * (x-min_alt)/(max_alt-min_alt))), 
-                                                         int(120 - (80 * (x-min_alt)/(max_alt-min_alt))), 200])
+    
+    # --- NOVA ESTÉTICA DO TERRENO: Cores Suaves (Pastéis) ---
+    def cor_suave_altimetria(alt):
+        frac = (alt - min_alt) / (max_alt - min_alt) if max_alt > min_alt else 0
+        if frac < 0.5:
+            # Transição: Azul Petróleo Suave para Índigo Suave
+            f_norm = frac * 2
+            r = int(45 + (85 - 45) * f_norm)
+            g = int(105 + (95 - 105) * f_norm)
+            b = int(125 + (145 - 125) * f_norm)
+        else:
+            # Transição: Índigo Suave para Rosa/Lilás Suave
+            f_norm = (frac - 0.5) * 2
+            r = int(85 + (165 - 85) * f_norm)
+            g = int(95 + (105 - 95) * f_norm)
+            b = int(145 + (155 - 145) * f_norm)
+        return [r, g, b, 140] # Alpha 140 para uma transparência muito elegante
+        
+    gdf['cor_terreno'] = gdf['altitude'].apply(cor_suave_altimetria)
 
+    # Cores e Posição das Bolhas
     min_pct = gdf['PCDS — Planilha1_%'].min()
     max_pct = gdf['PCDS — Planilha1_%'].max()
-    
-    gdf['posicao_bolha'] = gdf.apply(lambda r: [r.geometry.centroid.x, r.geometry.centroid.y, r['altitude'] + 5], axis=1)
+    gdf['posicao_bolha'] = gdf.apply(lambda r: [r.geometry.centroid.x, r.geometry.centroid.y, (r['altitude'] * 0.2) + 1.5], axis=1)
     
     def calc_cor(p):
         val = (p - min_pct) / (max_pct - min_pct) if max_pct > min_pct else 0
         return [255, int(255 * (1 - val)), 0, 230]
     
     gdf['cor_pcd'] = gdf['PCDS — Planilha1_%'].apply(calc_cor)
-    gdf['raio_bolha'] = gdf['PCDS — Planilha1_%'].apply(lambda x: 15 + ((x - min_pct) / (max_pct - min_pct) * 40))
+    gdf['raio_bolha'] = gdf['PCDS — Planilha1_%'].apply(lambda x: 12 + ((x - min_pct) / (max_pct - min_pct) * 38))
     
     return gdf
 
@@ -105,18 +121,20 @@ with st.sidebar:
 gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
 
 # ==========================================
-# 4. MAPA PYDECK
+# 4. MAPA PYDECK (VERSÃO TONS PASTÉIS)
 # ==========================================
-st.markdown("### Maquete de Acessibilidade 3D")
+st.markdown("### Maquete Técnica Interativa")
 
 camada_terreno = pdk.Layer(
     "GeoJsonLayer",
     gdf_pcd,
     extruded=True,
     get_elevation="altitude",
-    elevation_scale=0.8,
-    get_fill_color="cor_terreno",
-    get_line_color=[255, 255, 255, 30],
+    elevation_scale=0.2, 
+    get_fill_color="cor_terreno", # Agora usa as cores suaves calculadas
+    get_line_color=[255, 255, 255, 120], # Linha branca mais suave e translúcida
+    line_width_min_pixels=1.5, 
+    stroked=True,
     pickable=True,
 )
 
@@ -125,7 +143,7 @@ camada_bolhas = pdk.Layer(
     gdf_filtrado,
     get_position="posicao_bolha",
     get_radius="raio_bolha",
-    radius_scale=1.2,
+    radius_scale=1.1,
     get_fill_color="cor_pcd",
     get_line_color=[255, 255, 255, 255],
     stroked=True,
@@ -137,7 +155,7 @@ camada_bolhas = pdk.Layer(
 visao_mapa = pdk.ViewState(
     latitude=gdf_pcd.geometry.centroid.y.mean(),
     longitude=gdf_pcd.geometry.centroid.x.mean(),
-    zoom=14.5, pitch=50, bearing=10
+    zoom=14.8, pitch=40, bearing=5
 )
 
 st.pydeck_chart(pdk.Deck(
@@ -148,78 +166,47 @@ st.pydeck_chart(pdk.Deck(
 ))
 
 # ==========================================
-# 5. PAINEL ANALÍTICO LAPIDADO
+# 5. PAINEL ANALÍTICO
 # ==========================================
 @st.fragment
 def renderizar_graficos(df_final):
     st.divider()
-    st.subheader("📊 Evidências e Metodologia")
+    st.subheader("📊 Evidências Analíticas")
     
     if df_final.empty:
         st.warning("Ajuste o filtro para visualizar os gráficos.")
         return
 
-    # Limpeza para o Plotly
     df_plot = pd.DataFrame(df_final.drop(columns=['geometry']))
-
-    # --- DEFINIÇÃO DAS FAIXAS (O "PORQUÊ" DOS GRUPOS) ---
-    # Usamos Tercis: divide o total de bairros em 3 grupos com quantidades iguais de registros
-    df_plot['Faixa de Relevo'] = pd.qcut(
-        df_plot['altitude'], 
-        q=3, 
-        labels=['1. Baixo (Vales)', '2. Médio (Encostas)', '3. Alto (Topos)']
-    )
+    df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, 
+                                        labels=['1. Baixo (Vales)', '2. Médio (Encostas)', '3. Alto (Topos)'])
     
-    # Nota explicativa sobre a clusterização
-    with st.expander("ℹ️ Como definimos Baixo, Médio e Alto?"):
-        st.write("""
-            Para esta análise, utilizamos o método estatístico de **Tercis**. 
-            O algoritmo analisa todas as altitudes registradas na Rocinha e as divide em três fatias iguais:
-            - **Baixo:** Os 33% de setores com as menores altitudes (áreas de acesso e base).
-            - **Médio:** Os 33% de setores intermediários (ladeiras e encostas).
-            - **Alto:** Os 33% de setores com as maiores altitudes (áreas de cume e difícil acesso vertical).
-        """)
+    with st.expander("ℹ️ Nota Metodológica"):
+        st.write("Classificação topográfica baseada em tercis estatísticos das altitudes da região.")
 
     col1, col2 = st.columns(2)
-
     with col1:
-        # --- GRÁFICO 1: Perfil de Altitude ---
         df_alt = df_plot.sort_values('altitude', ascending=False)
-        fig1 = px.line(df_alt, x='sub_bairro', y='altitude', markers=True, 
-                      title="Perfil de Altitude por Setor", color_discrete_sequence=['grey'])
-        fig1.update_layout(xaxis_title=None, yaxis_title="Metros", showlegend=False)
+        fig1 = px.line(df_alt, x='sub_bairro', y='altitude', markers=True, title="Perfil de Altitude por Setor")
+        fig1.update_traces(line_color='grey', marker=dict(color='crimson'))
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
-        # --- GRÁFICO 2: Concentração PCD ---
         df_pcd_ord = df_plot.sort_values('PCDS — Planilha1_%', ascending=False)
-        fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='PCDS — Planilha1_%', 
-                     title="Concentração de PCDs por Setor", color_discrete_sequence=['darkorange'])
-        fig2.update_layout(xaxis_title=None, yaxis_title="Percentual (%)")
+        fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='PCDS — Planilha1_%', title="Concentração de PCDs por Setor")
+        fig2.update_traces(marker_color='darkorange')
         st.plotly_chart(fig2, use_container_width=True)
 
-    # --- GRÁFICO 3: DISPERSÃO CLUSTERIZADA (O QUE VOCÊ PEDIU) ---
     st.markdown("#### Matriz de Correlação Clusterizada")
     fig3 = px.scatter(
-        df_plot, 
-        x='altitude', 
-        y='PCDS — Planilha1_%',
-        color='Faixa de Relevo',
-        size='PCDS — Planilha1_%',
+        df_plot, x='altitude', y='PCDS — Planilha1_%',
+        color='Faixa de Relevo', size='PCDS — Planilha1_%',
         hover_name='sub_bairro',
-        color_discrete_map={
-            '1. Baixo (Vales)': '#FFD700', 
-            '2. Médio (Encostas)': '#FF8C00', 
-            '3. Alto (Topos)': '#8B0000'
-        },
-        title="Dispersão: Relação Direta entre Altitude e Densidade de PCDs",
-        labels={'altitude': 'Altitude (m)', 'PCDS — Planilha1_%': 'Densidade PCD (%)'}
+        color_discrete_map={'1. Baixo (Vales)': '#FFD700', '2. Médio (Encostas)': '#FF8C00', '3. Alto (Topos)': '#8B0000'},
+        title="Dispersão: Altitude vs Densidade PCD"
     )
-    # Adiciona uma linha de tendência sutil para mostrar a direção da hipótese
-    fig3.update_traces(marker=dict(line=dict(width=1, color='white')))
     st.plotly_chart(fig3, use_container_width=True)
 
-    # --- GRÁFICO 4: SÍNTESE FINAL (O DEGRAU) ---
     resumo = df_plot.groupby('Faixa de Relevo', observed=False)['PCDS — Planilha1_%'].mean().reset_index()
     fig4 = px.bar(resumo, x='Faixa de Relevo', y='PCDS — Planilha1_%',
                   title="Conclusão: Média de PCDs por Nível de Terreno",
