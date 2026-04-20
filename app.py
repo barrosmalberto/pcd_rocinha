@@ -20,9 +20,10 @@ with st.sidebar:
     st.markdown("🏢 **Malha Territorial (Altimetria):**<br>Relevo suavizado. *Verde-Água* (áreas baixas), *Ametista* (meia-encosta) e *Terracota* (topos).", unsafe_allow_html=True)
     st.markdown("🎨 **Indicadores PCD (Bolhas):**<br>O tamanho e a cor indicam a concentração de PCDs.", unsafe_allow_html=True)
     st.markdown("🟡 **Amarelo:** Baixa Densidade")
+    st.markdown("🟠 **Laranja:** Média Densidade")
     st.markdown("🔴 **Vermelho:** Alta Densidade")
     st.markdown("---")
-    st.info("💡 **Dica:** Use o botão direito do rato para inclinar a maquete e ver a volumetria.")
+    st.info("💡 **Dica:** Use o botão direito do mouse para inclinar a maquete.")
 
 st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
 st.caption("Visualização técnica refinada: Correlação entre topografia e vulnerabilidade.")
@@ -227,7 +228,7 @@ def renderizar_graficos(df_final):
         ),
         text=resumo['PCDS — Planilha1_%'].apply(lambda x: f"{x*100:.2f}%"),
         textposition="top center",
-        textfont=dict(size=12, color='#2c3e50')
+        textfont=dict(size=10, color='#2c3e50')
     ))
     
     fig4.update_layout(
