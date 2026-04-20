@@ -54,8 +54,8 @@ def carregar_dados_reais():
     gdf['lon'] = gdf['centroid'].x
     gdf['lat'] = gdf['centroid'].y
     
-    # Converte para DataFrame do Pandas (mais leve)
-    df_pcd = pd.DataFrame(gdf.drop(columns='geometry'))
+    # Converte para DataFrame e apaga TODAS as colunas espaciais complexas
+    df_pcd = pd.DataFrame(gdf.drop(columns=['geometry', 'centroid']))
     
     # 4. Busca as altitudes na API usando as latitudes e longitudes reais
     with st.spinner("Mapeando elevação exata das residências..."):
