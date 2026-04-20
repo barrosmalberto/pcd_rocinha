@@ -31,9 +31,9 @@ with st.sidebar:
     
     st.markdown("---")
     if "Hipsometria" in modo_analise:
-        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo (Verde) | 🟠 Médio | 🔴 Alto (Crítico)", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo | 🟠 Médio | 🔴 Alto ", unsafe_allow_html=True)
     else:
-        st.markdown("🏢 **Classes de Declividade:**<br>🟢 Plano (Claro) → 🔴 Crítico (Escuro)", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Declividade:**<br>🟢 Plano (Claro) → 🔴 Alto (Escuro)", unsafe_allow_html=True)
 
     st.markdown("🎨 **Indicadores PCD (Bolhas):**")
     st.markdown("🟡 Baixa | 🟠 Média | 🔴 Alta Densidade")
