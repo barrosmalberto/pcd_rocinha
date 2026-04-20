@@ -157,7 +157,7 @@ camada_bolhas = pdk.Layer(
 visao_mapa = pdk.ViewState(
     latitude=gdf_pcd.geometry.centroid.y.mean(),
     longitude=gdf_pcd.geometry.centroid.x.mean(),
-    zoom=11.2, 
+    zoom=15.2, 
     pitch=45,  # AQUI ESTÁ A MAGIA: Angulação exata de 45° 📐
     bearing=5  # Mantemos uma ligeira rotação (5°) para que a malha não fique totalmente reta
 )
