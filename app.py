@@ -9,6 +9,21 @@ import plotly.graph_objects as go
 
 # --- Configuração Inicial ---
 st.set_page_config(page_title="Rocinha PCD & Hipsometria", layout="wide")
+
+# Barra lateral com a Legenda
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/814/814513.png", width=50) # Ícone decorativo
+    st.markdown("### 📌 Legenda Analítica")
+    st.markdown("Nesta maquete interativa, cruzamos duas variáveis espaciais:")
+    st.markdown("---")
+    st.markdown("🏢 **Altura do Bloco (Z):**<br>Representa a *Altitude Média* do bairro. Quanto mais alto o bloco sobe na tela, mais íngreme e de difícil acesso é a área.", unsafe_allow_html=True)
+    st.markdown("🎨 **Cor do Bloco (RGB):**<br>Representa o *Percentual de PCDs* na população local.", unsafe_allow_html=True)
+    st.markdown("🟡 **Amarelo:** Baixa Concentração")
+    st.markdown("🟠 **Laranja:** Média Concentração")
+    st.markdown("🔴 **Vermelho Escuro:** Alta Concentração")
+    st.markdown("---")
+    st.info("💡 **Dica de UX:** Segure o botão direito do mouse e arraste para inclinar e girar o mapa 3D.")
+
 st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
 
 # --- Motor de Busca de Elevação (API) ---
@@ -39,108 +54,104 @@ def obter_elevacao_lote(df, lat_col="lat", lon_col="lon", chunk_size=100):
     progresso.empty()
     return elevacoes
 
-# --- ETL: Leitura do GeoJSON e Enriquecimento ---
+# --- ETL Unificado: GeoJSON Coroplético + Grade Base ---
 @st.cache_data
-def carregar_dados_reais():
-    # 1. Lê o GeoJSON que você fez upload
+def carregar_dados_completos():
+    # 1. Lê o GeoJSON real
     gdf = gpd.read_file("rocinha_pcds.geojson")
-    
-    # 2. Converte para Lat/Lon (EPSG:4326) exigido pelo PyDeck
     if gdf.crs != "EPSG:4326":
         gdf = gdf.to_crs(epsg=4326)
         
-    # 3. Como são polígonos, pegamos o centroide (ponto central) para os postes 3D
-    gdf['centroid'] = gdf.geometry.centroid
-    gdf['lon'] = gdf['centroid'].x
-    gdf['lat'] = gdf['centroid'].y
+    # 2. Busca altitude pelo centroide para erguer os bairros
+    with st.spinner("🌍 Calculando hipsometria dos bairros..."):
+        centroids = gdf.geometry.centroid
+        temp_df = pd.DataFrame({'lat': centroids.y, 'lon': centroids.x})
+        gdf['altitude'] = obter_elevacao_lote(temp_df)
     
-    # Converte para DataFrame e apaga TODAS as colunas espaciais complexas
-    df_pcd = pd.DataFrame(gdf.drop(columns=['geometry', 'centroid']))
+    # 3. Normalização de Cores bivariada (Amarelo para Vermelho)
+    min_pct = gdf['PCDS — Planilha1_%'].min()
+    max_pct = gdf['PCDS — Planilha1_%'].max()
+
+    def calcular_cor_pcd(pct):
+        val = (pct - min_pct) / (max_pct - min_pct) if max_pct > min_pct else 0
+        return [int(255 - (75 * val)), int(255 * (1 - val)), 0, 210]
+
+    gdf['fill_color'] = gdf['PCDS — Planilha1_%'].apply(calcular_cor_pcd)
     
-    # 4. Busca as altitudes na API usando as latitudes e longitudes reais
-    with st.spinner("Mapeando elevação exata das residências..."):
-        df_pcd['altitude'] = obter_elevacao_lote(df_pcd)
-        
-    # 5. Criação de cor dinâmica (Azul = Baixo, Vermelho = Alto)
-    max_alt = df_pcd['altitude'].max() if df_pcd['altitude'].max() > 0 else 1
-    df_pcd['cor'] = df_pcd['altitude'].apply(
-        lambda x: [int(255 * (x / max_alt)), 0, int(255 * (1 - (x / max_alt))), 200]
-    )
+    # 4. GERAÇÃO DE GRADE DO TERRENO PARA VALIDAÇÃO ESTATÍSTICA (Histograma)
+    with st.spinner("⛰️ Mapeando relevo base geral da favela..."):
+        lon_min, lat_min, lon_max, lat_max = gdf.total_bounds
+        df_grade = pd.DataFrame({
+            "lat": np.random.uniform(lat_min, lat_max, 500),
+            "lon": np.random.uniform(lon_min, lon_max, 500)
+        })
+        df_grade['altitude'] = obter_elevacao_lote(df_grade)
     
-    # --- GERAÇÃO DE GRADE FAKE DA ROCINHA PARA COMPARAÇÃO ---
-    # Como não temos os dados de *todos* os habitantes, geramos uma grade de relevo para a média
-    lon_min, lat_min, lon_max, lat_max = gdf.total_bounds
-    df_grade = pd.DataFrame({
-        "lat": np.random.uniform(lat_min, lat_max, 500),
-        "lon": np.random.uniform(lon_min, lon_max, 500)
-    })
-    df_grade['altitude'] = obter_elevacao_lote(df_grade)
-    
-    return df_pcd, df_grade
+    return gdf, df_grade
 
-# Carrega os dados
-df_pcd, df_grade = carregar_dados_reais()
+# Executa o ETL
+gdf_pcd, df_grade = carregar_dados_completos()
 
-# --- Renderização do Mapa PyDeck ---
-st.markdown("### Mapa Hipsométrico 3D: Localização de PCDs")
+# --- Renderização do Mapa Coroplético 3D ---
+st.markdown("### Maquete Analítica: Altitude vs. Concentração de PCDs")
 
-camada_terreno = pdk.Layer(
-    "HeatmapLayer",
-    data=df_grade,
-    get_position=["lon", "lat"],
-    get_weight="altitude",
-    opacity=0.3,
-    aggregation="MEAN"
-)
-
-# A altura da coluna é a altitude. O extrude liga o 3D.
-camada_pcd = pdk.Layer(
-    "ColumnLayer",
-    data=df_pcd,
-    get_position=["lon", "lat"],
+camada_bairros = pdk.Layer(
+    "GeoJsonLayer",
+    gdf_pcd,
+    extruded=True, # Liga o efeito 3D
+    wireframe=True,
     get_elevation="altitude",
-    elevation_scale=3, # Exagero vertical
-    radius=20,
-    get_fill_color="cor",
-    extruded=True,
+    elevation_scale=4, # Exagero vertical para as ladeiras
+    get_fill_color="fill_color",
+    get_line_color=[255, 255, 255, 80],
     pickable=True,
     auto_highlight=True
 )
 
-# Foca o mapa na média das coordenadas da Rocinha
-centro_lat = df_pcd['lat'].mean()
-centro_lon = df_pcd['lon'].mean()
-
 visao_inicial = pdk.ViewState(
-    latitude=centro_lat, longitude=centro_lon, zoom=14.5, pitch=60, bearing=30
+    latitude=gdf_pcd.geometry.centroid.y.mean(),
+    longitude=gdf_pcd.geometry.centroid.x.mean(),
+    zoom=14.5,
+    pitch=65, # Câmera inclinada para ver as alturas
+    bearing=20
 )
 
 st.pydeck_chart(pdk.Deck(
-    layers=[camada_terreno, camada_pcd], 
-    initial_view_state=visao_inicial, 
+    layers=[camada_bairros], 
+    initial_view_state=visao_inicial,
     map_style="dark",
-    tooltip={"text": "Bairro: {sub_bairro}\nAltitude: {altitude} m\nPCDs no local: {PCDS — Planilha1_Pessoas com Deficiência}"}
+    tooltip={
+        "html": "<b>Setor:</b> {sub_bairro}<br/>"
+                "<b>Altitude Média:</b> {altitude} m<br/>"
+                "<b>PCDs mapeados:</b> {PCDS — Planilha1_Pessoas com Deficiência} pessoas<br/>"
+                "<b>Densidade (Percentual):</b> {PCDS — Planilha1_%}"
+    }
 ))
 
 st.divider()
 
 # --- Painel de Validação Analítica ---
 @st.fragment
-def painel_analitico(df_pcd, df_grade):
+def painel_analitico(gdf_pcd, df_grade):
     st.subheader("📊 Validação de Hipótese: Desigualdade de Acesso Vertical")
     
     m1, m2 = st.columns(2)
     media_favela = df_grade['altitude'].mean()
-    media_pcd = df_pcd['altitude'].mean()
+    media_pcd = gdf_pcd['altitude'].mean() # Agora puxamos do GDF dos bairros
     
     m1.metric("Altitude Média (Terreno Geral)", f"{media_favela:.1f} m")
-    m2.metric("Altitude Média (PCDs)", f"{media_pcd:.1f} m", delta=f"{(media_pcd - media_favela):.1f} m vs Média")
+    m2.metric("Altitude Média (Setores PCD)", f"{media_pcd:.1f} m", delta=f"{(media_pcd - media_favela):.1f} m vs Média")
     
     fig = go.Figure()
     fig.add_trace(go.Histogram(x=df_grade['altitude'], name='Relevo Geral', marker_color='gray', opacity=0.5, histnorm='probability'))
-    fig.add_trace(go.Histogram(x=df_pcd['altitude'], name='Residências PCD', marker_color='crimson', opacity=0.7, histnorm='probability'))
+    fig.add_trace(go.Histogram(x=gdf_pcd['altitude'], name='Setores PCD', marker_color='crimson', opacity=0.7, histnorm='probability'))
     
-    fig.update_layout(barmode='overlay', title_text="Distribuição por Faixa de Altitude", xaxis_title_text='Altitude (Metros)')
+    fig.update_layout(
+        barmode='overlay', 
+        title_text="Distribuição por Faixa de Altitude", 
+        xaxis_title_text='Altitude (Metros)',
+        yaxis_title_text='Probabilidade'
+    )
     st.plotly_chart(fig, use_container_width=True)
 
-painel_analitico(df_pcd, df_grade)
+painel_analitico(gdf_pcd, df_grade)
