@@ -18,13 +18,11 @@ with st.sidebar:
     st.markdown("### 📌 Legenda Analítica")
     st.markdown("---")
     
-    # --- FUNCIONALIDADE SIG: SELETOR DE BASEMAP ---
+    # --- SELETOR DE BASEMAP (APENAS NATIVOS) ---
     st.markdown("### 🗺️ Estilo do Mapa")
     estilos_mapa = {
         "Claro Técnico (Padrão)": "light",
-        "Satélite Realista": "satellite",
-        "Dark Mode": "dark",
-        "Híbrido/Estradas": "road"
+        "Modo Escuro": "dark"
     }
     mapa_selecionado = st.selectbox("Escolha a base de visualização:", list(estilos_mapa.keys()))
     basemap_pdk = estilos_mapa[mapa_selecionado]
@@ -36,7 +34,7 @@ with st.sidebar:
     st.markdown("🟠 **Laranja:** Média Densidade")
     st.markdown("🔴 **Vermelho:** Alta Densidade")
     st.markdown("---")
-    st.info("💡 **Dica:** Use o botão direito do mouse para inclinar a maquete.")
+    st.info("💡 **Dica:** Use o botão direito do rato para inclinar a maquete.")
 
 st.title("🏔️ Índice de Acessibilidade Vertical: Rocinha")
 st.caption("Correlação entre topografia e vulnerabilidade espacial (pessoas com deficiência).")
@@ -131,11 +129,11 @@ with st.sidebar:
 gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
 
 # ==========================================
-# 4. MAPA PYDECK (VERSÃO SIG MULTIBASES)
+# 4. MAPA PYDECK (VERSÃO REFINADA)
 # ==========================================
-st.markdown(f"### Maquete Interativa ({mapa_selecionado})")
+st.markdown("### Maquete Técnica Interativa")
 
-# Lógica de cor da linha para garantir contraste em diferentes fundos
+# Ajuste automático do contraste das linhas
 cor_linha = [80, 80, 80, 200] if basemap_pdk == "light" else [255, 255, 255, 120]
 
 camada_terreno = pdk.Layer(
@@ -168,15 +166,13 @@ camada_bolhas = pdk.Layer(
 visao_mapa = pdk.ViewState(
     latitude=gdf_pcd.geometry.centroid.y.mean(),
     longitude=gdf_pcd.geometry.centroid.x.mean(),
-    zoom=15.2, 
-    pitch=45, 
-    bearing=5
+    zoom=15.2, pitch=45, bearing=5
 )
 
 st.pydeck_chart(pdk.Deck(
     layers=[camada_terreno, camada_bolhas],
     initial_view_state=visao_mapa,
-    map_style=basemap_pdk, # AQUI MUDA CONFORME A ESCOLHA NA SIDEBAR
+    map_style=basemap_pdk,
     tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Altitude:</b> {altitude}m<br><b>PCDs:</b> {PCDS — Planilha1_%}"}
 ))
 
@@ -193,16 +189,10 @@ def renderizar_graficos(df_final):
         return
 
     df_plot = pd.DataFrame(df_final.drop(columns=['geometry']))
-    df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, 
-                                        labels=['1. Baixo', '2. Médio', '3. Alto'])
+    df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, labels=['1. Baixo', '2. Médio', '3. Alto'])
     
     with st.expander("ℹ️ Nota Metodológica"):
-        st.write("""
-            Utilizamos o critério estatístico de **Tercis** para classificar a topografia:
-            - **Baixo:** O terço inferior das altitudes registradas (base da comunidade).
-            - **Médio:** O terço intermediário (áreas de encosta).
-            - **Alto:** O terço superior (cumes e áreas de maior dificuldade de acesso).
-        """)
+        st.write("Utilizamos tercis estatísticos para classificar a topografia (Baixo, Médio e Alto).")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -215,7 +205,7 @@ def renderizar_graficos(df_final):
     with col2:
         df_pcd_ord = df_plot.sort_values('PCDS — Planilha1_%', ascending=False)
         fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='PCDS — Planilha1_%', title="Concentração de PCDs por Setor")
-        fig2.update_traces(marker_color='#e67e22', marker_line_width=0)
+        fig2.update_traces(marker_color='#e67e22')
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None)
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -231,7 +221,7 @@ def renderizar_graficos(df_final):
     fig3.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig3, use_container_width=True)
 
-    # --- GRÁFICO 4: CONCLUSÃO EM LINHA (SUAVIZADO) ---
+    # --- GRÁFICO 4: CONCLUSÃO EM LINHA (SIGNATURE) ---
     resumo = df_plot.groupby('Faixa de Relevo', observed=False)['PCDS — Planilha1_%'].mean().reset_index()
     fig4 = go.Figure()
     fig4.add_trace(go.Scatter(
@@ -239,24 +229,12 @@ def renderizar_graficos(df_final):
         y=resumo['PCDS — Planilha1_%'],
         mode='lines+markers+text',
         line=dict(color='#34495e', width=4, shape='spline'),
-        marker=dict(
-            size=24,
-            color=['#FFB300', '#FF7F00', '#D32F2F'],
-            line=dict(width=2, color='white')
-        ),
+        marker=dict(size=24, color=['#FFB300', '#FF7F00', '#D32F2F'], line=dict(width=2, color='white')),
         text=resumo['PCDS — Planilha1_%'].apply(lambda x: f"{x*100:.2f}%"),
         textposition="top center",
         textfont=dict(size=10, color='#2c3e50')
     ))
-    fig4.update_layout(
-        title="Conclusão: Tendência de Concentração por Nível de Terreno",
-        xaxis_title="Nível do Terreno",
-        yaxis_title="Média Densidade PCD (%)",
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        yaxis=dict(showgrid=True, gridcolor='#f0f0f0', zeroline=False),
-        xaxis=dict(showgrid=False)
-    )
+    fig4.update_layout(title="Conclusão: Tendência de Concentração por Nível de Terreno", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig4, use_container_width=True)
 
 renderizar_graficos(gdf_filtrado)
