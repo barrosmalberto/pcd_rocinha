@@ -31,20 +31,20 @@ with st.sidebar:
     
     st.markdown("---")
     if "Hipsometria" in modo_analise:
-        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo (Claro) | 🟠 Médio | 🟣 Alto (Escuro)", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo (Claro) | 🟠 Médio | 🔴 Alto (Crítico)", unsafe_allow_html=True)
     else:
-        st.markdown("🏢 **Classes de Declividade:**<br>🟢 Plano (Claro) → 🟣 Crítico (Escuro)", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Declividade:**<br>🟢 Plano (Claro) → 🔴 Crítico (Escuro)", unsafe_allow_html=True)
 
     st.markdown("🎨 **Indicadores PCD (Bolhas):**")
     st.markdown("🟡 Baixa | 🟠 Média | 🔴 Alta Densidade")
     st.markdown("---")
-    st.info("💡 **Dica:** O degradê segue a lógica: quanto mais escuro, maior o valor.")
+    st.info("💡 **Dica:** O Vermelho agora representa o valor mais alto em todas as camadas.")
 
 st.title("🏔️ Índice de Acessibilidade Vertical: Rocinha")
-st.caption("Análise multivariada: Hierarquia visual por luminância e saturação.")
+st.caption("Análise multivariada: Hierarquia visual com Vermelho como alerta máximo.")
 
 # ==========================================
-# 2. MOTOR DE DADOS (ETL COM HIERARQUIA DE VALOR)
+# 2. MOTOR DE DADOS (ETL COM CORES INVERTIDAS)
 # ==========================================
 
 @st.cache_data(show_spinner=False)
@@ -72,7 +72,7 @@ def carregar_dados_completos():
     gdf = gdf.rename(columns={'PCDS — Planilha1_%': 'Percentual de PCDs'})
     gdf['Percentual de PCDs'] = gdf['Percentual de PCDs'] * 100 
         
-    with st.spinner("🌍 Mapeando relevo e construindo degradê lógico..."):
+    with st.spinner("🌍 Mapeando relevo e ajustando alertas visuais..."):
         centroids = gdf.geometry.centroid
         df_pontos = pd.DataFrame({
             'lat': centroids.y, 'lon': centroids.x,
@@ -85,22 +85,22 @@ def carregar_dados_completos():
         gdf['altitude'] = alt_a
         gdf['declividade'] = abs(np.array(alt_a) - np.array(alt_b)) / 130 * 100
 
-    # --- PALETA HIPSOMETRIA (3 CLASSES: CLARO -> ESCURO) ---
+    # --- PALETA HIPSOMETRIA (3 CLASSES: VERDE -> LARANJA -> VERMELHO) ---
     ranks_alt = pd.qcut(gdf['altitude'], 3, labels=[0, 1, 2]).astype(int)
-    # Verde Pálido (Baixo) -> Laranja (Médio) -> Roxo Profundo (Alto)
-    palette_3 = [[200, 230, 201, 180], [245, 124, 0, 180], [74, 20, 140, 180]]
+    # Verde Pálido (Baixo) -> Laranja (Médio) -> Vermelho Crítico (Alto)
+    palette_3 = [[200, 230, 201, 180], [255, 152, 0, 180], [211, 47, 47, 180]]
     gdf['cor_altitude'] = [palette_3[r] for r in ranks_alt]
 
-    # --- PALETA DECLIVIDADE (7 CLASSES: CLARO -> ESCURO) ---
+    # --- PALETA DECLIVIDADE (7 CLASSES: VERDE -> ROXO -> VERMELHO) ---
     ranks_slope = pd.qcut(gdf['declividade'].rank(method='first'), 7, labels=range(7)).astype(int)
     palette_7 = [
         [232, 245, 233, 180], # 1. Verde Quase Branco (Plano)
         [165, 214, 167, 180], # 2. Verde Suave
         [255, 245, 157, 180], # 3. Amarelo Claro
         [255, 213, 79, 180],  # 4. Amarelo Ouro
-        [255, 152, 0, 180],   # 5. Laranja (Crítico)
-        [211, 47, 47, 180],   # 6. Vermelho
-        [74, 20, 140, 180]    # 7. Roxo Profundo (Extremo)
+        [245, 124, 0, 180],   # 5. Laranja
+        [74, 20, 140, 180],   # 6. Roxo (Extremo Técnico)
+        [211, 47, 47, 180]    # 7. Vermelho Vibrante (Crítico Absoluto)
     ]
     gdf['cor_declividade'] = [palette_7[r] for r in ranks_slope]
 
@@ -167,7 +167,7 @@ def renderizar_graficos(df_final):
     if df_final.empty: return
 
     df_plot = pd.DataFrame(df_final.drop(columns=['geometry']))
-    df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], 3, labels=['1. Baixo', '2. Médio', '3. Alto'])
+    df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, labels=['1. Baixo', '2. Médio', '3. Alto'])
     
     col_a, col_b = st.columns(2)
     with col_a:
@@ -177,7 +177,7 @@ def renderizar_graficos(df_final):
         st.plotly_chart(fig1, use_container_width=True)
     with col_b:
         fig_dec = px.line(df_plot.sort_values('declividade', ascending=False), x='sub_bairro', y='declividade', markers=True, title="2. Perfil de Inclinação (%)")
-        fig_dec.update_traces(line_color='#7b1fa2', marker=dict(color='#4a148c', size=6))
+        fig_dec.update_traces(line_color='#d32f2f', marker=dict(color='#d32f2f', size=6))
         fig_dec.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title=None)
         st.plotly_chart(fig_dec, use_container_width=True)
 
@@ -188,7 +188,7 @@ def renderizar_graficos(df_final):
 
     st.markdown("#### Matriz de Correlação")
     fig3 = px.scatter(df_plot, x='altitude', y='Percentual de PCDs', color='Faixa de Relevo', size='Percentual de PCDs', hover_name='sub_bairro',
-                      color_discrete_map={'1. Baixo': '#a5d6a7', '2. Médio': '#f57c00', '3. Alto': '#4a148c'},
+                      color_discrete_map={'1. Baixo': '#a5d6a7', '2. Médio': '#f57c00', '3. Alto': '#d32f2f'},
                       title="4. Dispersão: Altitude vs Densidade PCD", labels={'altitude': 'Altitude (m)', 'Percentual de PCDs': 'PCDs (%)'})
     fig3.update_traces(marker=dict(line=dict(width=1, color='white')))
     fig3.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
@@ -199,7 +199,7 @@ def renderizar_graficos(df_final):
     fig4.add_trace(go.Scatter(
         x=resumo['Faixa de Relevo'], y=resumo['Percentual de PCDs'], mode='lines+markers+text',
         line=dict(color='#34495e', width=4, shape='spline'),
-        marker=dict(size=24, color=['#a5d6a7', '#f57c00', '#4a148c'], line=dict(width=2, color='white')),
+        marker=dict(size=24, color=['#a5d6a7', '#f57c00', '#d32f2f'], line=dict(width=2, color='white')),
         text=resumo['Percentual de PCDs'].apply(lambda x: f"{x:.2f}%"), textposition="top center", textfont=dict(size=11) 
     ))
     fig4.update_layout(title="5. Conclusão: Tendência por Nível de Terreno", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', yaxis_title="Média PCD (%)", xaxis_title="Nível do Terreno")
