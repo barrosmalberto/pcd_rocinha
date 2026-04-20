@@ -21,7 +21,7 @@ with st.sidebar:
     st.markdown("### 🔍 Camada do Terreno")
     modo_analise = st.radio(
         "Selecione o indicador visual:",
-        ["Hipsometria (3 Classes)", "Declividade (7 Classes)"]
+        ["Hipsometria", "Declividade"]
     )
     
     st.markdown("### 🗺️ Estilo do Mapa")
@@ -135,7 +135,7 @@ cor_ativa = "cor_altitude" if "Hipsometria" in modo_analise else "cor_declividad
 # ==========================================
 # 4. MAPA 3D (TOOLTIP REFINADO)
 # ==========================================
-st.markdown(f"### Maquete Técnica: {modo_analise}")
+st.markdown(f"### Visualização: {modo_analise}")
 
 cor_linha = [80, 80, 80, 200] if basemap_pdk == "light" else [255, 255, 255, 120]
 
