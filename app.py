@@ -8,232 +8,194 @@ import time
 import plotly.graph_objects as go
 import plotly.express as px
 
-# --- Configuração Inicial ---
+# ==========================================
+# 1. CONFIGURAÇÃO E INTERFACE (SIDEBAR)
+# ==========================================
 st.set_page_config(page_title="Rocinha PCD & Hipsometria", layout="wide")
 
-# Barra lateral com a Legenda e o Filtro
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/814/814513.png", width=50) # Ícone decorativo
+    st.image("https://cdn-icons-png.flaticon.com/512/814/814513.png", width=50)
     st.markdown("### 📌 Legenda Analítica")
-    st.markdown("Nesta maquete interativa, cruzamos duas variáveis espaciais:")
     st.markdown("---")
-    st.markdown("🏢 **Terreno (Z):**<br>Representa a *Altitude Média* do bairro. Mais escuro e elevado = mais íngreme.", unsafe_allow_html=True)
-    st.markdown("🎨 **Bolhas (Foco):**<br>Representa o *Percentual de PCDs* na população local.", unsafe_allow_html=True)
-    st.markdown("🟡 **Amarelo/Pequeno:** Baixa Concentração")
-    st.markdown("🔴 **Vermelho/Grande:** Alta Concentração")
+    st.markdown("🏢 **Terreno (Z):**<br>Representa a altitude. Áreas mais escuras são os topos dos morros.", unsafe_allow_html=True)
+    st.markdown("🎨 **Bolhas (PCDs):**<br>O tamanho e a cor indicam a concentração de PCDs.", unsafe_allow_html=True)
+    st.markdown("🟡 **Amarelo:** Baixa Densidade")
+    st.markdown("🔴 **Vermelho:** Alta Densidade")
     st.markdown("---")
-    st.info("💡 **Dica de UX:** Segure o botão direito do rato e arraste para inclinar e girar o mapa 3D.")
-    
-    st.markdown("### 🎛️ Filtro Analítico")
-    # O slider será configurado dinamicamente após carregarmos os dados
+    st.info("💡 **Dica:** Use o botão direito do rato para inclinar o mapa e ver a volumetria.")
 
 st.title("🏔️ Acesso Vertical: PCDs na Rocinha")
+st.caption("Análise de correlação entre topografia e vulnerabilidade social.")
 
-# --- Motor de Busca de Elevação (API) ---
+# ==========================================
+# 2. MOTOR DE DADOS (API E ETL)
+# ==========================================
+
 @st.cache_data(show_spinner=False)
 def obter_elevacao_lote(df, lat_col="lat", lon_col="lon", chunk_size=100):
     elevacoes = []
     locations = [{"latitude": row[lat_col], "longitude": row[lon_col]} for _, row in df.iterrows()]
     url = "https://api.open-elevation.com/api/v1/lookup"
     
-    progresso = st.progress(0, text="🌍 A consultar API de Elevação do Terreno...")
+    progresso = st.progress(0, text="🌍 A consultar relevo (API Open-Elevation)...")
     
     for i in range(0, len(locations), chunk_size):
         chunk = locations[i : i + chunk_size]
-        payload = {"locations": chunk}
         try:
-            response = requests.post(url, json=payload, timeout=20)
+            response = requests.post(url, json={"locations": chunk}, timeout=20)
             if response.status_code == 200:
                 resultados = response.json().get("results", [])
                 elevacoes.extend([res["elevation"] for res in resultados])
             else:
                 elevacoes.extend([0] * len(chunk))
-        except Exception:
+        except:
             elevacoes.extend([0] * len(chunk))
-            
-        time.sleep(1) # Respeito ao Rate Limit
+        
+        time.sleep(1) # Respeito ao limite da API gratuita
         progresso.progress(min(1.0, (i + chunk_size) / len(locations)))
         
     progresso.empty()
     return elevacoes
 
-# --- ETL Unificado: Base Subtil + Bolhas de PCD ---
 @st.cache_data
 def carregar_dados_completos():
+    # Carregamento do arquivo enviado
     gdf = gpd.read_file("rocinha_pcds.geojson")
     if gdf.crs != "EPSG:4326":
         gdf = gdf.to_crs(epsg=4326)
         
-    with st.spinner("🌍 A calcular hipsometria dos bairros..."):
+    # Cálculo de Hipsometria
+    with st.spinner("🌍 Mapeando altitudes dos setores..."):
         centroids = gdf.geometry.centroid
         temp_df = pd.DataFrame({'lat': centroids.y, 'lon': centroids.x})
         gdf['altitude'] = obter_elevacao_lote(temp_df)
     
-    # 1. ESTÉTICA DO TERRENO (A Barreira)
+    # Estética do Terreno (Cinza Subtil)
     min_alt, max_alt = gdf['altitude'].min(), gdf['altitude'].max()
-    def calcular_cor_terreno(alt):
-        val = (alt - min_alt) / (max_alt - min_alt) if max_alt > min_alt else 0
-        cinza = int(120 - (80 * val)) 
-        return [cinza, cinza, cinza, 200]
-    
-    gdf['cor_terreno'] = gdf['altitude'].apply(calcular_cor_terreno)
+    gdf['cor_terreno'] = gdf['altitude'].apply(lambda x: [int(120 - (80 * (x-min_alt)/(max_alt-min_alt))), 
+                                                         int(120 - (80 * (x-min_alt)/(max_alt-min_alt))), 
+                                                         int(120 - (80 * (x-min_alt)/(max_alt-min_alt))), 200])
 
-    # 2. ESTÉTICA DOS PCDS (O Foco)
-    min_pct, max_pct = gdf['PCDS — Planilha1_%'].min(), gdf['PCDS — Planilha1_%'].max()
-    def calcular_cor_pcd(pct):
-        val = (pct - min_pct) / (max_pct - min_pct) if max_pct > min_pct else 0
-        return [255, int(255 * (1 - val)), 0, 230]
-
-    gdf['cor_pcd'] = gdf['PCDS — Planilha1_%'].apply(calcular_cor_pcd)
+    # Estética das Bolhas PCD
+    min_pct = gdf['PCDS — Planilha1_%'].min()
+    max_pct = gdf['PCDS — Planilha1_%'].max()
     
-    # Truque mágico: Bolha flutua 5 metros acima do chão
+    # Posição 3D da bolha (flutuando levemente acima do solo)
     gdf['posicao_bolha'] = gdf.apply(lambda r: [r.geometry.centroid.x, r.geometry.centroid.y, r['altitude'] + 5], axis=1)
     
-    # Raio da bolha
-    gdf['raio_bolha'] = gdf['PCDS — Planilha1_%'].apply(lambda x: 10 + ((x - min_pct) / (max_pct - min_pct) * 45) if max_pct > min_pct else 15)
+    # Cores e Raios
+    def calc_cor(p):
+        val = (p - min_pct) / (max_pct - min_pct) if max_pct > min_pct else 0
+        return [255, int(255 * (1 - val)), 0, 230]
+    
+    gdf['cor_pcd'] = gdf['PCDS — Planilha1_%'].apply(calc_cor)
+    gdf['raio_bolha'] = gdf['PCDS — Planilha1_%'].apply(lambda x: 15 + ((x - min_pct) / (max_pct - min_pct) * 40))
     
     return gdf
 
-# Executa o ETL
 gdf_pcd = carregar_dados_completos()
 
-# --- Configuração do Slider Dinâmico na Sidebar ---
+# ==========================================
+# 3. FILTROS E LÓGICA DE EXIBIÇÃO
+# ==========================================
 with st.sidebar:
-    min_val = float(gdf_pcd['PCDS — Planilha1_%'].min())
-    max_val = float(gdf_pcd['PCDS — Planilha1_%'].max())
-    
-    filtro_pct = st.slider(
-        "Ocultar áreas com densidade menor que:",
-        min_value=min_val,
-        max_value=max_val,
-        value=min_val,
+    st.markdown("### 🎛️ Filtro de Densidade")
+    valor_slider = st.slider(
+        "Mostrar apenas setores com mais de (% PCD):",
+        float(gdf_pcd['PCDS — Planilha1_%'].min()),
+        float(gdf_pcd['PCDS — Planilha1_%'].max()),
+        float(gdf_pcd['PCDS — Planilha1_%'].min()),
         format="%.4f"
     )
 
-# Aplica o filtro APENAS na camada de bolhas (mantém o terreno completo)
-gdf_bolhas_filtradas = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= filtro_pct]
+# Filtragem dos dados para as bolhas e gráficos
+gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
 
-# --- Renderização do Mapa: Terreno vs Bolhas PCD ---
-st.markdown("### Mapa de Mobilidade: O Terreno como Barreira para PCDs")
+# ==========================================
+# 4. MAPA PYDECK (VISUALIZAÇÃO 3D)
+# ==========================================
+st.markdown("### Maquete de Acessibilidade 3D")
 
 camada_terreno = pdk.Layer(
     "GeoJsonLayer",
-    gdf_pcd, # <-- O terreno usa o GDF completo
-    extruded=True, 
-    wireframe=True,
+    gdf_pcd, # Terreno sempre completo para contexto
+    extruded=True,
     get_elevation="altitude",
     elevation_scale=0.8,
     get_fill_color="cor_terreno",
-    get_line_color=[255, 255, 255, 40],
+    get_line_color=[255, 255, 255, 30],
     pickable=True,
 )
 
-camada_pcd = pdk.Layer(
+camada_bolhas = pdk.Layer(
     "ScatterplotLayer",
-    gdf_bolhas_filtradas, # <-- As bolhas usam o GDF filtrado pelo slider!
+    gdf_filtrado,
     get_position="posicao_bolha",
     get_radius="raio_bolha",
-    radius_scale=1.5,
+    radius_scale=1.2,
     get_fill_color="cor_pcd",
-    get_line_color=[255, 255, 255, 255], 
+    get_line_color=[255, 255, 255, 255],
     stroked=True,
-    line_width_min_pixels=1.5,
+    line_width_min_pixels=1,
     pickable=True,
     auto_highlight=True
 )
 
-visao_inicial = pdk.ViewState(
+visao_mapa = pdk.ViewState(
     latitude=gdf_pcd.geometry.centroid.y.mean(),
     longitude=gdf_pcd.geometry.centroid.x.mean(),
-    zoom=14.5, pitch=55, bearing=15
+    zoom=14.5, pitch=50, bearing=10
 )
 
 st.pydeck_chart(pdk.Deck(
-    layers=[camada_terreno, camada_pcd], 
-    initial_view_state=visao_inicial,
+    layers=[camada_terreno, camada_bolhas],
+    initial_view_state=visao_mapa,
     map_style="dark",
-    tooltip={
-        "html": "<b>Setor:</b> {sub_bairro}<br/>"
-                "<b>Altitude Média:</b> {altitude} m<br/>"
-                "<b>PCDs mapeados:</b> {PCDS — Planilha1_Pessoas com Deficiência} pessoas<br/>"
-                "<b>Densidade (Percentual):</b> {PCDS — Planilha1_%}"
-    }
+    tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Altitude:</b> {altitude}m<br><b>PCDs:</b> {PCDS — Planilha1_%}"}
 ))
 
-# --- Painel de Validação Analítica (Gráficos Direcionados) ---
+# ==========================================
+# 5. PAINEL ANALÍTICO (GRÁFICOS SIMPLIFICADOS)
+# ==========================================
 @st.fragment
-def painel_analitico(gdf_bolhas_filtradas):
+def renderizar_graficos(df_final):
     st.divider()
-    st.subheader("📊 Painel de Validação de Hipótese")
+    st.subheader("📊 Evidências Analíticas")
     
-    # Se o filtro remover todas as bolhas, interrompe a renderização dos gráficos
-    if gdf_bolhas_filtradas.empty:
-        st.warning("Nenhum setor atinge o critério do filtro atual. Reduza o valor no painel lateral.")
+    if df_final.empty:
+        st.warning("Ajuste o filtro para visualizar os gráficos.")
         return
-        
-    # Prepara o DataFrame para os gráficos (removemos a geometria)
-    df_plot = pd.DataFrame(gdf_bolhas_filtradas.drop(columns=['geometry']))
-    
-    # --- GRÁFICO 1: Altitude por Área (Em Linha e Decrescente) ---
-    df_alt = df_plot.sort_values(by='altitude', ascending=False)
-    
-    fig1 = go.Figure()
-    fig1.add_trace(go.Scatter(
-        x=df_alt['sub_bairro'], 
-        y=df_alt['altitude'],
-        mode='lines+markers',
-        line=dict(color='gray', width=3),
-        marker=dict(size=10, color='crimson'),
-        name='Altitude'
-    ))
-    fig1.update_layout(
-        title="1. Perfil Topográfico: Altitude Média por Setor (Ordem Decrescente)",
-        xaxis_title="Setores da Rocinha",
-        yaxis_title="Altitude (Metros)",
-        xaxis_tickangle=-45,
-        margin=dict(b=100)
-    )
-    
-    # --- GRÁFICO 2: Percentual de PCDs por Área (Barras e Decrescente) ---
-    df_pct = df_plot.sort_values(by='PCDS — Planilha1_%', ascending=False)
-    
-    fig2 = go.Figure()
-    fig2.add_trace(go.Bar(
-        x=df_pct['sub_bairro'], 
-        y=df_pct['PCDS — Planilha1_%'],
-        marker_color='darkorange',
-        text=df_pct['PCDS — Planilha1_%'].apply(lambda x: f"{x*100:.2f}%"),
-        textposition='outside'
-    ))
-    fig2.update_layout(
-        title="2. Concentração: Percentual de PCDs por Setor (Ordem Decrescente)",
-        xaxis_title="Setores da Rocinha",
-        yaxis_title="Percentual de PCDs (%)",
-        xaxis_tickangle=-45,
-        margin=dict(b=100)
-    )
-    
-    # --- GRÁFICO 3: Correlação Direta (Altitude x PCDs) ---
-    fig3 = px.scatter(
-        df_plot, 
-        x='altitude', 
-        y='PCDS — Planilha1_%',
-        hover_name='sub_bairro',
-        size='PCDS — Planilha1_%',
-        color='altitude',
-        color_continuous_scale='Reds',
-        title="3. Matriz de Hipótese: Altitude vs Concentração de PCDs"
-    )
-    fig3.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
-    fig3.update_layout(
-        xaxis_title="Altitude (Metros)",
-        yaxis_title="Percentual de PCDs (%)"
-    )
 
-    # Renderiza os três gráficos organizados na tela
+    # Limpeza para o Plotly
+    df_plot = pd.DataFrame(df_final.drop(columns=['geometry']))
+
+    # --- GRÁFICO 1: Altitude (Decrescente) ---
+    df_alt = df_plot.sort_values('altitude', ascending=False)
+    fig1 = px.line(df_alt, x='sub_bairro', y='altitude', markers=True, title="1. Perfil de Altitude por Setor")
+    fig1.update_traces(line_color='grey', marker=dict(color='crimson', size=8))
+    fig1.update_layout(xaxis_title=None, yaxis_title="Metros")
     st.plotly_chart(fig1, use_container_width=True)
+
+    # --- GRÁFICO 2: Percentual PCD (Decrescente) ---
+    df_pcd_ord = df_plot.sort_values('PCDS — Planilha1_%', ascending=False)
+    fig2 = px.bar(df_pcd_ord, x='sub_bairro', y='PCDS — Planilha1_%', title="2. Concentração de PCDs por Setor")
+    fig2.update_traces(marker_color='darkorange')
+    fig2.update_layout(xaxis_title=None, yaxis_title="Percentual (%)")
     st.plotly_chart(fig2, use_container_width=True)
+
+    # --- GRÁFICO 3: SÍNTESE DA HIPÓTESE (O mais importante) ---
+    # Classificação simplificada em 3 níveis
+    df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, 
+                                        labels=['Baixo (Vales)', 'Médio (Encostas)', 'Alto (Topos)'])
+    
+    resumo_hipotese = df_plot.groupby('Faixa de Relevo', observed=False)['PCDS — Planilha1_%'].mean().reset_index()
+    
+    fig3 = px.bar(resumo_hipotese, x='Faixa de Relevo', y='PCDS — Planilha1_%',
+                  title="3. CONCLUSÃO: Onde vivem os PCDs? (Média por Faixa de Relevo)",
+                  color='Faixa de Relevo',
+                  color_discrete_map={'Baixo (Vales)': '#FFD700', 'Médio (Encostas)': '#FF8C00', 'Alto (Topos)': '#8B0000'})
+    
+    fig3.update_layout(showlegend=False, yaxis_title="Média de PCDs (%)", xaxis_title=None)
     st.plotly_chart(fig3, use_container_width=True)
 
-# Executa o painel com os dados filtrados
-painel_analitico(gdf_bolhas_filtradas)
+renderizar_graficos(gdf_filtrado)
