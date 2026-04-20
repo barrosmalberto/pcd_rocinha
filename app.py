@@ -22,7 +22,8 @@ with st.sidebar:
     st.markdown("### 🗺️ Estilo do Mapa")
     estilos_mapa = {
         "Claro (Padrão)": "light",
-        "Modo Escuro": "dark"
+        "Modo Escuro": "dark",
+        "Híbrido/Estradas": "road"
     }
     mapa_selecionado = st.selectbox("Escolha a base de visualização:", list(estilos_mapa.keys()))
     basemap_pdk = estilos_mapa[mapa_selecionado]
