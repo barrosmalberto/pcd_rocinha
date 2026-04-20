@@ -180,7 +180,7 @@ def renderizar_graficos(df_final):
     df_plot['Faixa de Relevo'] = pd.qcut(df_plot['altitude'], q=3, 
                                         labels=['1. Baixo', '2. Médio', '3. Alto'])
     
-    with st.expander("ℹ️ Nota Metodológica:"):
+    with st.expander("ℹ️ Nota Metodológica"):
         st.write("""
             Utilizamos o critério estatístico de **Tercis** para classificar a topografia:
             - **Baixo:** O terço inferior das altitudes registradas (base da comunidade).
