@@ -17,6 +17,19 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/814/814513.png", width=50)
     st.markdown("### 📌 Legenda Analítica")
     st.markdown("---")
+    
+    # --- FUNCIONALIDADE SIG: SELETOR DE BASEMAP ---
+    st.markdown("### 🗺️ Estilo do Mapa")
+    estilos_mapa = {
+        "Claro Técnico (Padrão)": "light",
+        "Satélite Realista": "satellite",
+        "Dark Mode": "dark",
+        "Híbrido/Estradas": "road"
+    }
+    mapa_selecionado = st.selectbox("Escolha a base de visualização:", list(estilos_mapa.keys()))
+    basemap_pdk = estilos_mapa[mapa_selecionado]
+    
+    st.markdown("---")
     st.markdown("🏢 **Malha Territorial (Altimetria):**<br>Relevo suavizado. *Verde-Água* (áreas baixas), *Ametista* (meia-encosta) e *Terracota* (topos).", unsafe_allow_html=True)
     st.markdown("🎨 **Indicadores PCD (Bolhas):**<br>O tamanho e a cor indicam a concentração de PCDs.", unsafe_allow_html=True)
     st.markdown("🟡 **Amarelo:** Baixa Densidade")
@@ -118,9 +131,12 @@ with st.sidebar:
 gdf_filtrado = gdf_pcd[gdf_pcd['PCDS — Planilha1_%'] >= valor_slider]
 
 # ==========================================
-# 4. MAPA PYDECK (ÂNGULO DE 45°)
+# 4. MAPA PYDECK (VERSÃO SIG MULTIBASES)
 # ==========================================
-st.markdown("### Maquete Interativa")
+st.markdown(f"### Maquete Interativa ({mapa_selecionado})")
+
+# Lógica de cor da linha para garantir contraste em diferentes fundos
+cor_linha = [80, 80, 80, 200] if basemap_pdk == "light" else [255, 255, 255, 120]
 
 camada_terreno = pdk.Layer(
     "GeoJsonLayer",
@@ -129,7 +145,7 @@ camada_terreno = pdk.Layer(
     get_elevation="altitude",
     elevation_scale=0.2, 
     get_fill_color="cor_terreno", 
-    get_line_color=[80, 80, 80, 200], 
+    get_line_color=cor_linha, 
     line_width_min_pixels=1.5, 
     stroked=True,
     pickable=True,
@@ -142,7 +158,7 @@ camada_bolhas = pdk.Layer(
     get_radius="raio_bolha",
     radius_scale=1.1,
     get_fill_color="cor_pcd",
-    get_line_color=[40, 40, 40, 255], 
+    get_line_color=[40, 40, 40, 255] if basemap_pdk == "light" else [255, 255, 255, 255], 
     stroked=True,
     line_width_min_pixels=1.5,
     pickable=True,
@@ -160,12 +176,12 @@ visao_mapa = pdk.ViewState(
 st.pydeck_chart(pdk.Deck(
     layers=[camada_terreno, camada_bolhas],
     initial_view_state=visao_mapa,
-    map_style="light",
+    map_style=basemap_pdk, # AQUI MUDA CONFORME A ESCOLHA NA SIDEBAR
     tooltip={"html": "<b>Setor:</b> {sub_bairro}<br><b>Altitude:</b> {altitude}m<br><b>PCDs:</b> {PCDS — Planilha1_%}"}
 ))
 
 # ==========================================
-# 5. PAINEL ANALÍTICO (SUAVIZADO COM LINHAS)
+# 5. PAINEL ANALÍTICO
 # ==========================================
 @st.fragment
 def renderizar_graficos(df_final):
@@ -215,27 +231,23 @@ def renderizar_graficos(df_final):
     fig3.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig3, use_container_width=True)
 
-    # --- GRÁFICO 4: CONCLUSÃO EM LINHA (MAIS SUAVE E ANALÍTICO) ---
+    # --- GRÁFICO 4: CONCLUSÃO EM LINHA (SUAVIZADO) ---
     resumo = df_plot.groupby('Faixa de Relevo', observed=False)['PCDS — Planilha1_%'].mean().reset_index()
-    
     fig4 = go.Figure()
-    
-    # Adicionamos a linha de tendência
     fig4.add_trace(go.Scatter(
         x=resumo['Faixa de Relevo'],
         y=resumo['PCDS — Planilha1_%'],
         mode='lines+markers+text',
-        line=dict(color='#34495e', width=4, shape='spline'), # Spline para suavizar a curva
+        line=dict(color='#34495e', width=4, shape='spline'),
         marker=dict(
             size=24,
-            color=['#FFB300', '#FF7F00', '#D32F2F'], # Cores por nível
+            color=['#FFB300', '#FF7F00', '#D32F2F'],
             line=dict(width=2, color='white')
         ),
         text=resumo['PCDS — Planilha1_%'].apply(lambda x: f"{x*100:.2f}%"),
         textposition="top center",
         textfont=dict(size=10, color='#2c3e50')
     ))
-    
     fig4.update_layout(
         title="Conclusão: Tendência de Concentração por Nível de Terreno",
         xaxis_title="Nível do Terreno",
@@ -245,7 +257,6 @@ def renderizar_graficos(df_final):
         yaxis=dict(showgrid=True, gridcolor='#f0f0f0', zeroline=False),
         xaxis=dict(showgrid=False)
     )
-    
     st.plotly_chart(fig4, use_container_width=True)
 
 renderizar_graficos(gdf_filtrado)
