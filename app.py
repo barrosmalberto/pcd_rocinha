@@ -31,9 +31,26 @@ with st.sidebar:
     
     st.markdown("---")
     if "Hipsometria" in modo_analise:
-        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo | 🟠 Médio | 🔴 Alto ", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Altitude:**<br>🟢 Baixo | 🟠 Médio | 🔴 Alto", unsafe_allow_html=True)
     else:
-        st.markdown("🏢 **Classes de Declividade:**<br>🟢 Plano (Claro) → 🔴 Alto (Escuro)", unsafe_allow_html=True)
+        st.markdown("🏢 **Classes de Declividade:**", unsafe_allow_html=True)
+        # --- NOVA LEGENDA EM PALETA DISCRETA ---
+        palette_html = """
+        <div style="display: flex; height: 16px; width: 100%; border-radius: 3px; overflow: hidden; border: 0.5px solid #ccc; margin-top: 5px;">
+            <div style="flex: 1; background-color: rgb(232, 245, 233);"></div>
+            <div style="flex: 1; background-color: rgb(165, 214, 167);"></div>
+            <div style="flex: 1; background-color: rgb(255, 245, 157);"></div>
+            <div style="flex: 1; background-color: rgb(255, 213, 79);"></div>
+            <div style="flex: 1; background-color: rgb(245, 124, 0);"></div>
+            <div style="flex: 1; background-color: rgb(74, 20, 140);"></div>
+            <div style="flex: 1; background-color: rgb(211, 47, 47);"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px; margin-top: 2px;">
+            <span>Plano (0%)</span>
+            <span>Crítico (+20%)</span>
+        </div>
+        """
+        st.markdown(palette_html, unsafe_allow_html=True)
 
     st.markdown("🎨 **Indicadores PCD (Bolhas):**")
     st.markdown("🟡 Baixa | 🟠 Média | 🔴 Alta Densidade")
@@ -85,18 +102,16 @@ def carregar_dados_completos():
         gdf['altitude'] = np.array(alt_a).round(1)
         gdf['declividade'] = (abs(np.array(alt_a) - np.array(alt_b)) / 130 * 100).round(1)
 
-    # Nomes técnicos para o tooltip
     gdf['pcd_tooltip'] = gdf['Percentual de PCDs']
     gdf['alt_tooltip'] = gdf['altitude']
     gdf['dec_tooltip'] = gdf['declividade']
 
-    # --- PALETA HIPSOMETRIA (3 CLASSES: VOLTANDO AO VERDE ORIGINAL) ---
+    # --- PALETA HIPSOMETRIA (VOLTA AO VERDE ORIGINAL PARA BAIXO) ---
     ranks_alt = pd.qcut(gdf['altitude'], 3, labels=[0, 1, 2]).astype(int)
-    # Baixo (Verde Original) -> Médio (Laranja) -> Alto (Vermelho)
     palette_3 = [[165, 214, 167, 180], [255, 152, 0, 180], [211, 47, 47, 180]]
     gdf['cor_altitude'] = [palette_3[r] for r in ranks_alt]
 
-    # --- PALETA DECLIVIDADE (7 CLASSES: DEGRADÊ LÓGICO) ---
+    # --- PALETA DECLIVIDADE (7 CLASSES) ---
     ranks_slope = pd.qcut(gdf['declividade'].rank(method='first'), 7, labels=range(7)).astype(int)
     palette_7 = [
         [232, 245, 233, 180], [165, 214, 167, 180], [255, 245, 157, 180],
@@ -104,7 +119,6 @@ def carregar_dados_completos():
     ]
     gdf['cor_declividade'] = [palette_7[r] for r in ranks_slope]
 
-    # Bolhas PCD
     min_pct, max_pct = gdf['Percentual de PCDs'].min(), gdf['Percentual de PCDs'].max()
     gdf['posicao_bolha'] = gdf.apply(lambda r: [r.geometry.centroid.x, r.geometry.centroid.y, (r['altitude'] * 0.2) + 1.5], axis=1)
     
@@ -179,7 +193,7 @@ def renderizar_graficos(df_final):
     st.subheader("📊 Evidências Analíticas")
     if df_final.empty: return
 
-    # --- NOTA METODOLÓGICA (RESTAURADA E COMPLEMENTADA) ---
+    # --- NOTA METODOLÓGICA RESTAURADA E AMPLIADA ---
     with st.expander("ℹ️ Nota Metodológica"):
         st.write("""
             **1. Hipsometria (Altitude):**
